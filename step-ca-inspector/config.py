@@ -6,7 +6,7 @@ import yaml
 class config:
     @classmethod
     def __init__(self):
-        config_path = os.environ.get("STEP_CA_CERTAPI_CONFIGURATION")
+        config_path = os.environ.get("STEP_CA_INSPECTOR_CONFIGURATION")
         if config_path is None:
             print("No configuration file found")
             sys.exit(1)
