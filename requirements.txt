@@ -1,0 +1,9 @@
+PyYAML
+cryptography
+mariadb
+python-dateutil
+uvicorn
+prometheus-client
+fastapi[standard]
+fastapi_utils
+typing_inspect
