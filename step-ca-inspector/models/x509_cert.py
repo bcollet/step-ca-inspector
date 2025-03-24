@@ -25,6 +25,7 @@ class list:
             cls.certs.append(cert_object)
 
         cur.close()
+        db.commit()
 
         if sort_key is not None:
             cls.certs.sort(key=lambda item: getattr(item, sort_key))
@@ -121,6 +122,7 @@ class cert:
             cert = None
 
         cur.close()
+        db.commit()
         return cert
 
     def get_sans(self, san_data):
