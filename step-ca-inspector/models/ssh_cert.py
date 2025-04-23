@@ -60,6 +60,10 @@ class cert:
         self.alg = cert_alg
         if cert.type == serialization.SSHCertificateType.USER:
             self.type = "User"
+        elif cert.type == serialization.SSHCertificateType.HOST:
+            self.type = "Host"
+        else:
+            self.type = "Unknown"
         self.key_id = cert.key_id
         self.principals = cert.valid_principals
         self.not_after = cert.valid_before
