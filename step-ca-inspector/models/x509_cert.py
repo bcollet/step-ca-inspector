@@ -5,6 +5,7 @@ import mariadb
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from datetime import datetime, timedelta, timezone
+from enum import Enum
 
 
 class list:
@@ -97,11 +98,11 @@ class cert:
         )
 
         if self.revoked_at is not None and self.revoked_at < now_with_tz:
-            self.status = status(status.REVOKED)
+            self.status = status.REVOKED
         elif self.not_after < now_with_tz:
-            self.status = status(status.EXPIRED)
+            self.status = status.EXPIRED
         else:
-            self.status = status(status.VALID)
+            self.status = status.VALID
 
     def get_cert(self, db, cert_serial):
         cur = db.cursor()
@@ -153,20 +154,7 @@ class cert:
         return sans
 
 
-class status:
+class status(Enum):
     REVOKED = 1
     EXPIRED = 2
     VALID = 3
-
-    def __init__(self, status):
-        self.value = status
-
-    def __str__(self):
-        if self.value == self.EXPIRED:
-            return "Expired"
-        elif self.value == self.REVOKED:
-            return "Revoked"
-        elif self.value == self.VALID:
-            return "Valid"
-        else:
-            return "Undefined"
