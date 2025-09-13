@@ -186,8 +186,6 @@ async def update_metrics():
 @app.get("/x509/certs", tags=["x509"])
 def list_x509_certs(
     sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
-    revoked: bool = Query(False, deprecated=True),
-    expired: bool = Query(False, deprecated=True),
     cert_status: list[certStatus] = Query(["Valid"]),
     subject: str = None,
     san: str = None,
@@ -199,14 +197,7 @@ def list_x509_certs(
 
     for cert in certs:
         if cert.status.name not in [item.name for item in cert_status]:
-            # TODO: Remove handling of deprecated parameters
-            if not expired and not revoked:
-                continue
-            if cert.status == x509_cert.status.EXPIRED and not expired:
-                continue
-            if cert.status == x509_cert.status.REVOKED and not revoked:
-                continue
-
+            continue
         if (
             provisioner is not None
             and provisioner.casefold() not in cert.provisioner["name"].casefold()
@@ -241,8 +232,6 @@ def get_x509_cert(serial: str) -> Union[x509Cert, None]:
 @app.get("/ssh/certs", tags=["ssh"])
 def list_ssh_certs(
     sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
-    revoked: bool = Query(False, deprecated=True),
-    expired: bool = Query(False, deprecated=True),
     cert_type: list[sshCertType] = Query(["Host", "User"]),
     cert_status: list[certStatus] = Query(["Valid"]),
     key: str = None,
@@ -253,16 +242,7 @@ def list_ssh_certs(
 
     for cert in certs:
         if cert.status.name not in [item.name for item in cert_status]:
-            # TODO: Remove handling of deprecated parameters
-            if not expired and not revoked:
-                continue
-
-            if cert.status == ssh_cert.status.EXPIRED and not expired:
-                continue
-
-            if cert.status == ssh_cert.status.REVOKED and not revoked:
-                continue
-
+            continue
         if cert.type.name not in [item.name for item in cert_type]:
             continue
         if key is not None and key.casefold() not in str(cert.key_id).casefold():
