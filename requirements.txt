@@ -7,3 +7,4 @@ prometheus-client
 fastapi[standard]
 fastapi_utils
 typing_inspect
+hvac

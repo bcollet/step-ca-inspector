@@ -1,0 +1,37 @@
+---
+database:
+  host: "mysql.example.com"
+  user: "stepca_inspector"
+  password: "secret"
+  database: "stepca"
+  ssl: true
+  ssl_verify_cert: true
+  ssl_ca: "/app/root-ca.crt"
+  reconnect: true
+scep_webhook_config:
+  "<webhook_id>":
+    secret: "<webhook_secret>"
+    #challenge_plugin: "static"
+    #challenge_plugin_config:
+    #  "<challenge>":
+    #    allowed_dns_names:
+    #    - "host.example.com"
+    #    - "*.example.com"
+    #    allowed_email_addresses: []
+    #    allowed_ip_addresses: []
+    challenge_plugin: "hashicorp_vault"
+    challenge_plugin_config:
+      hvac_connection:
+        url: https://vault.example.com
+        verify: "/app/root-ca.crt"
+      #hvac_auth_method: token
+      #hvac_token: "<token>"
+      hvac_auth_method: approle
+      hvac_role_id: "<approle_id>"
+      hvac_secret_id: "<approle_secret>"
+      hvac_engine: <engine>
+      hvac_secret_path: "%s/scep"
+      hvac_challenge_key: "challenge"
+      hvac_allowed_dns_names_key: "allowed_dns_names"
+      hvac_allowed_email_addresses_key: "allowed_email_addresses"
+      hvac_allowed_ip_addresses: "allowed_ip_addresses"

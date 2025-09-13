@@ -1,12 +1,16 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
 from fastapi_utils.tasks import repeat_every
 from prometheus_client import make_asgi_app, Gauge
-from models import x509_cert, ssh_cert
-from config import config
 from pydantic import BaseModel
 from typing import List, Union
 from datetime import datetime
 from enum import Enum
+from models import x509_cert, ssh_cert
+from config import config
+from webhook import scep_challenge
+import base64
+import hashlib
+import hmac
 import mariadb
 import sys
 
@@ -119,6 +123,39 @@ class x509Cert(BaseModel):
     pem: str
 
 
+class x509Extension(BaseModel):
+    id: str
+    critical: bool
+    value: str
+
+
+# https://pkg.go.dev/crypto/x509#CertificateRequest
+class x509CertificateRequest(BaseModel):
+    version: int
+    signature: Union[str, None] = None
+    signatureAlgorithm: str
+
+    publicKey: str
+    publicKeyAlgorithm: str
+
+    subject: dict
+
+    extensions: Union[List[x509Extension], None] = None
+    extraExtensions: Union[List[x509Extension], None] = None
+
+    dnsNames: Union[list, None] = None
+    emailAddresses: Union[list, None] = None
+    ipAddresses: Union[list, None] = None
+    uris: Union[list, None] = None
+
+
+class x509SCEPChallenge(BaseModel):
+    provisionerName: str
+    scepChallenge: str
+    scepTransactionID: str
+    x509CertificateRequest: x509CertificateRequest
+
+
 class sshCertType(str, Enum):
     HOST = "Host"
     USER = "User"
@@ -142,6 +179,11 @@ class sshCert(BaseModel):
     public_key_hash: str
     public_identity: str
     extensions: dict = {}
+
+
+class webhookResponse(BaseModel):
+    allow: bool
+    data: dict = {}
 
 
 @app.on_event("startup")
@@ -183,7 +225,7 @@ async def update_metrics():
         ssh_cert_status.labels(**labels).set(cert.status.value)
 
 
-@app.get("/x509/certs", tags=["x509"])
+@app.get("/x509/certs", tags=["x509"], summary="Get a list of x509 certificates")
 def list_x509_certs(
     sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
     cert_status: list[certStatus] = Query(["Valid"]),
@@ -220,7 +262,9 @@ def list_x509_certs(
     return cert_list
 
 
-@app.get("/x509/certs/{serial}", tags=["x509"])
+@app.get(
+    "/x509/certs/{serial}", tags=["x509"], summary="Get details on an x509 certificate"
+)
 def get_x509_cert(serial: str) -> Union[x509Cert, None]:
     cert = x509_cert.cert.from_serial(db, serial)
     if cert is None:
@@ -229,7 +273,7 @@ def get_x509_cert(serial: str) -> Union[x509Cert, None]:
     return cert
 
 
-@app.get("/ssh/certs", tags=["ssh"])
+@app.get("/ssh/certs", tags=["ssh"], summary="Get a list of SSH certificates")
 def list_ssh_certs(
     sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
     cert_type: list[sshCertType] = Query(["Host", "User"]),
@@ -261,7 +305,9 @@ def list_ssh_certs(
     return cert_list
 
 
-@app.get("/ssh/certs/{serial}", tags=["ssh"])
+@app.get(
+    "/ssh/certs/{serial}", tags=["ssh"], summary="Get details on an SSH certificate"
+)
 def get_ssh_cert(serial: str) -> Union[sshCert, None]:
     cert = ssh_cert.cert.from_serial(db, serial)
     if cert is None:
@@ -269,3 +315,51 @@ def get_ssh_cert(serial: str) -> Union[sshCert, None]:
     cert.type = getattr(sshCertType, cert.type.name)
     cert.status = getattr(certStatus, cert.status.name)
     return cert
+
+
+async def get_body(request: Request):
+    return await request.body()
+
+
+@app.post(
+    "/webhook/scepchallenge", tags=["webhooks"], summary="Valiate a SCEP challenge"
+)
+def webhook_scepchallenge(
+    req: x509SCEPChallenge,
+    x_smallstep_webhook_id: str = Header(),
+    x_smallstep_signature: str = Header(),
+    body: bytes = Depends(get_body),
+) -> webhookResponse:
+
+    response = webhookResponse
+    response.allow = False
+
+    if not hasattr(config, "scep_webhook_config"):
+        raise HTTPException(status_code=500, detail="No webhook configuration")
+
+    if x_smallstep_webhook_id not in config.scep_webhook_config:
+        raise HTTPException(status_code=400, detail="Invalid webhook ID")
+
+    webhook_config = config.scep_webhook_config[x_smallstep_webhook_id]
+
+    signing_secret = base64.b64decode(webhook_config["secret"])
+    sig = bytes.fromhex(x_smallstep_signature)
+
+    h = hmac.new(signing_secret, body, hashlib.sha256)
+
+    if not hmac.compare_digest(sig, h.digest()):
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    if not hasattr(scep_challenge, webhook_config.get("challenge_plugin", "static")):
+        raise HTTPException(
+            status_code=500, detail="Invalid challenge plugin configured"
+        )
+
+    validator = getattr(
+        scep_challenge, webhook_config.get("challenge_plugin", "static")
+    )(webhook_config.get("challenge_plugin_config", {}))
+
+    if validator.validate(req):
+        response.allow = True
+
+    return response
