@@ -317,22 +317,11 @@ def get_ssh_cert(serial: str) -> Union[sshCert, None]:
     return cert
 
 
-async def get_body(request: Request):
-    return await request.body()
-
-
-@app.post(
-    "/webhook/scepchallenge", tags=["webhooks"], summary="Valiate a SCEP challenge"
-)
-def webhook_scepchallenge(
-    req: x509SCEPChallenge,
+async def webhook_validate(
+    request: Request,
     x_smallstep_webhook_id: str = Header(),
     x_smallstep_signature: str = Header(),
-    body: bytes = Depends(get_body),
-) -> webhookResponse:
-
-    response = webhookResponse
-    response.allow = False
+):
 
     if not hasattr(config, "scep_webhook_config"):
         raise HTTPException(status_code=500, detail="No webhook configuration")
@@ -342,13 +331,38 @@ def webhook_scepchallenge(
 
     webhook_config = config.scep_webhook_config[x_smallstep_webhook_id]
 
-    signing_secret = base64.b64decode(webhook_config["secret"])
-    sig = bytes.fromhex(x_smallstep_signature)
+    try:
+        signing_secret = base64.b64decode(webhook_config.get("secret", ""))
+    except ValueError:
+        raise HTTPException(status_code=500, detail="Invalid webhook configuration")
+
+    try:
+        sig = bytes.fromhex(x_smallstep_signature)
+    except ValueError:
+        raise HTTPException(
+            status_code=400, detail="Invalid X-Smallstep-Signature header"
+        )
+
+    body = await request.body()
 
     h = hmac.new(signing_secret, body, hashlib.sha256)
 
     if not hmac.compare_digest(sig, h.digest()):
         raise HTTPException(status_code=400, detail="Invalid signature")
+
+    return webhook_config
+
+
+@app.post(
+    "/webhook/scepchallenge", tags=["webhooks"], summary="Valiate a SCEP challenge"
+)
+def webhook_scepchallenge(
+    req: x509SCEPChallenge,
+    webhook_config: dict = Depends(webhook_validate),
+) -> webhookResponse:
+
+    response = webhookResponse
+    response.allow = False
 
     if not hasattr(scep_challenge, webhook_config.get("challenge_plugin", "static")):
         raise HTTPException(
