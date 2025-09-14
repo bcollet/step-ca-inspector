@@ -55,13 +55,14 @@ class hashicorp_vault:
         allowed_email_addresses = secret["data"]["data"].get(
             self.config.get(
                 "hvac_allowed_email_addresses_key", "allowed_email_addresses"
-            )
+            ),
+            [],
         )
         allowed_ip_addresses = secret["data"]["data"].get(
-            self.config.get("hvac_allowed_ip_addresses_key", "allowed_ip_addresses")
+            self.config.get("hvac_allowed_ip_addresses_key", "allowed_ip_addresses"), []
         )
         allowed_uris = secret["data"]["data"].get(
-            self.config.get("hvac_allowed_uris", "allowed_uris")
+            self.config.get("hvac_allowed_uris", "allowed_uris"), []
         )
 
         for dns_name in req.x509CertificateRequest.dnsNames or []:
