@@ -7,13 +7,31 @@ from datetime import datetime
 from enum import Enum
 from models import x509_cert, ssh_cert
 from config import config
-from webhook import scep_challenge
+from webhook import scep_challenge, x509
+import asgi_correlation_id
 import base64
 import hashlib
 import hmac
+import logging
 import mariadb
+import os
 import sys
 
+
+def configure_logging():
+    console_handler = logging.StreamHandler()
+    console_handler.addFilter(asgi_correlation_id.CorrelationIdFilter())
+    logging.basicConfig(
+        handlers=[console_handler],
+        level=os.environ.get("STEP_CA_INSPECTOR_LOGLEVEL", logging.INFO),
+        format="%(levelname)s [%(correlation_id)s] %(message)s",
+    )
+
+
+app = FastAPI(title="step-ca Inspector API", on_startup=[configure_logging])
+app.add_middleware(asgi_correlation_id.CorrelationIdMiddleware)
+
+logger = logging.getLogger()
 config()
 
 try:
@@ -22,8 +40,6 @@ except Exception as e:
     print(f"Could not connect to database: {e}")
     sys.exit(1)
 
-
-app = FastAPI(title="step-ca Inspector API")
 
 x509_label_names = ["subject", "san", "serial", "provisioner", "provisioner_type"]
 x509_cert_not_before = Gauge(
@@ -149,10 +165,16 @@ class x509CertificateRequest(BaseModel):
     uris: Union[list, None] = None
 
 
-class x509SCEPChallenge(BaseModel):
+class webhookSCEPChallenge(BaseModel):
     provisionerName: str
     scepChallenge: str
     scepTransactionID: str
+    x509CertificateRequest: x509CertificateRequest
+
+
+class webhookx509CertificateRequest(BaseModel):
+    # NOTE: provisionerName is missing from step-ca requests
+    # provisionerName: str
     x509CertificateRequest: x509CertificateRequest
 
 
@@ -323,22 +345,28 @@ async def webhook_validate(
     x_smallstep_signature: str = Header(),
 ):
 
-    if not hasattr(config, "scep_webhook_config"):
-        raise HTTPException(status_code=500, detail="No webhook configuration")
+    logger.debug(f"Received webhook request for webhook ID {x_smallstep_webhook_id}")
 
-    if x_smallstep_webhook_id not in config.scep_webhook_config:
+    if not hasattr(config, "webhook_config"):
+        logger.error("No webhook configuration")
+        raise HTTPException(status_code=500)
+
+    if x_smallstep_webhook_id not in config.webhook_config:
+        logger.error("Invalid webhook ID")
         raise HTTPException(status_code=400, detail="Invalid webhook ID")
 
-    webhook_config = config.scep_webhook_config[x_smallstep_webhook_id]
+    webhook_config = config.webhook_config[x_smallstep_webhook_id]
 
     try:
         signing_secret = base64.b64decode(webhook_config.get("secret", ""))
     except ValueError:
-        raise HTTPException(status_code=500, detail="Invalid webhook configuration")
+        logger.error("Misconfigured webhook secret")
+        raise HTTPException(status_code=500)
 
     try:
         sig = bytes.fromhex(x_smallstep_signature)
     except ValueError:
+        logger.error("Invalid X-Smallstep-Signature header")
         raise HTTPException(
             status_code=400, detail="Invalid X-Smallstep-Signature header"
         )
@@ -348,6 +376,7 @@ async def webhook_validate(
     h = hmac.new(signing_secret, body, hashlib.sha256)
 
     if not hmac.compare_digest(sig, h.digest()):
+        logger.error("Invalid signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     return webhook_config
@@ -357,23 +386,75 @@ async def webhook_validate(
     "/webhook/scepchallenge", tags=["webhooks"], summary="Valiate a SCEP challenge"
 )
 def webhook_scepchallenge(
-    req: x509SCEPChallenge,
+    req: webhookSCEPChallenge,
     webhook_config: dict = Depends(webhook_validate),
 ) -> webhookResponse:
 
     response = webhookResponse
-    response.allow = False
+
+    logger.info("Received SCEP challenge webhook request")
 
     if not hasattr(scep_challenge, webhook_config.get("challenge_plugin", "static")):
-        raise HTTPException(
-            status_code=500, detail="Invalid challenge plugin configured"
-        )
+        logger.error("Invalid challenge plugin configured")
+        raise HTTPException(status_code=500)
 
     validator = getattr(
         scep_challenge, webhook_config.get("challenge_plugin", "static")
     )(webhook_config.get("challenge_plugin_config", {}))
 
     if validator.validate(req):
+        logger.info("Validator approved certificate request")
         response.allow = True
+    else:
+        logger.warning("Validator refused certificate request")
+        response.allow = False
 
+    return response
+
+
+@app.post(
+    "/webhook/oidc",
+    tags=["webhooks"],
+    summary="Valiate and enrich an OIDC certificate request",
+)
+async def webhook_oidc(
+    req: webhookx509CertificateRequest,
+    webhook_config: dict = Depends(webhook_validate),
+) -> webhookResponse:
+
+    response = webhookResponse
+
+    logger.info("Received OIDC webhook request")
+
+    if "x509_plugin" not in webhook_config:
+        logger.error("No plugin configured for this webhook")
+        raise HTTPException(status_code=500)
+
+    if not hasattr(x509, webhook_config.get("x509_plugin")):
+        logger.error("Invalid x509 plugin configured")
+        raise HTTPException(status_code=500)
+
+    validator = getattr(x509, webhook_config.get("x509_plugin"))(
+        webhook_config.get("x509_plugin_config", {})
+    )
+
+    if validator.validate(req):
+        logger.info("Validator approved certificate request")
+        response.allow = True
+    else:
+        logger.warning("Validator refused certificate request")
+        response.allow = False
+
+    return response
+
+
+@app.post("/webhook/debug", tags=["webhooks"], summary="Debugging endpoint")
+async def webhook_debug(request: Request) -> webhookResponse:
+
+    response = webhookResponse
+    body = await request.json()
+    import json
+
+    print(json.dumps(body))
+    response.allow = False
     return response

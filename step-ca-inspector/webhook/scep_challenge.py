@@ -1,6 +1,10 @@
 from fastapi import HTTPException
 from fnmatch import fnmatch
 import hvac
+import logging
+
+
+logger = logging.getLogger()
 
 
 class hashicorp_vault:
@@ -20,18 +24,16 @@ class hashicorp_vault:
                     role_id=self.config.get("hvac_role_id", ""),
                     secret_id=self.config.get("hvac_secret_id", ""),
                 )
-            except hvac.exceptions.InternalServerError:
-                raise HTTPException(
-                    status_code=500, detail="Challenge plugin misconfigured"
-                )
+            except hvac.exceptions.VaultError as e:
+                logger.error(f"HashiCorp Vault error: {e}")
+                raise HTTPException(status_code=500)
 
         if not self.client.is_authenticated():
-            raise HTTPException(
-                status_code=500, detail="Challenge plugin misconfigured"
-            )
+            logger.error("HashiCorp Vault client is not authenticated")
+            raise HTTPException(status_code=500)
 
     def validate(self, req):
-
+        logger.debug("Validating with hashicorp_vault plugin")
         cn = req.x509CertificateRequest.subject.get("commonName")
 
         try:
@@ -39,7 +41,8 @@ class hashicorp_vault:
                 path=self.config.get("hvac_secret_path", "%s") % cn,
                 mount_point=self.config.get("hvac_engine", "secret"),
             )
-        except hvac.exceptions.InvalidPath:
+        except hvac.exceptions.VaultError as e:
+            logger.warning(f"HashiCorp Vault error: {e}")
             return False
 
         challenge = secret["data"]["data"].get(
@@ -47,6 +50,7 @@ class hashicorp_vault:
         )
 
         if req.scepChallenge != challenge:
+            logger.error("SCEP challenge does not match")
             return False
 
         allowed_dns_names = secret["data"]["data"].get(
@@ -68,21 +72,29 @@ class hashicorp_vault:
         for dns_name in req.x509CertificateRequest.dnsNames or []:
             for allowed_dns_name in allowed_dns_names:
                 if fnmatch(dns_name, allowed_dns_name):
+                    logger.debug(f"DNS name {dns_name} is allowed")
                     break
             else:
+                logger.error(f"DNS name {dns_name} is not allowed")
                 return False
 
         for email_address in req.x509CertificateRequest.emailAddresses or []:
             if email_address not in allowed_email_addresses:
+                logger.error(f"Email address {email_address} is not allowed")
                 return False
+            logger.debug(f"Email address {email_address} is allowed")
 
         for ip_address in req.x509CertificateRequest.ipAddresses or []:
             if ip_address not in allowed_ip_addresses:
+                logger.error(f"IP address {ip_address} is not allowed")
                 return False
+            logger.debug(f"IP address {ip_address} is allowed")
 
         for uri in req.x509CertificateRequest.uris or []:
             if uri not in allowed_uris:
+                logger.error(f"URI {uri} is not allowed")
                 return False
+            logger.debug(f"URI {uri} is allowed")
 
         return True
 
@@ -94,36 +106,48 @@ class static:
         self.config = config
 
     def validate(self, req):
+        logger.debug("Validating with static plugin")
         if req.scepChallenge not in self.config:
+            logger.error("SCEP challenge does not match")
             return False
 
         challenge_config = self.config[req.scepChallenge]
 
+        cn = req.x509CertificateRequest.subject.get("commonName")
+
         for allowed_dns_name in challenge_config.get("allowed_dns_names", []):
-            if fnmatch(
-                req.x509CertificateRequest.subject.get("commonName"), allowed_dns_name
-            ):
+            if fnmatch(cn, allowed_dns_name):
+                logger.debug(f"Subject CN={cn} is allowed")
                 break
         else:
+            logger.error(f"Subject CN={cn} is not allowed")
             return False
 
         for dns_name in req.x509CertificateRequest.dnsNames or []:
             for allowed_dns_name in challenge_config.get("allowed_dns_names", []):
                 if fnmatch(dns_name, allowed_dns_name):
+                    logger.debug(f"DNS name {dns_name} is allowed")
                     break
             else:
+                logger.error(f"DNS name {dns_name} is not allowed")
                 return False
 
         for email_address in req.x509CertificateRequest.emailAddresses or []:
             if email_address not in challenge_config.get("allowed_email_addresses", []):
+                logger.error(f"Email address {email_address} is not allowed")
                 return False
+            logger.debug(f"Email address {email_address} is allowed")
 
         for ip_address in req.x509CertificateRequest.ipAddresses or []:
             if ip_address not in challenge_config.get("allowed_ip_addresses", []):
+                logger.error(f"IP address {ip_address} is not allowed")
                 return False
+            logger.debug(f"IP address {ip_address} is allowed")
 
         for uri in req.x509CertificateRequest.uris or []:
             if uri not in challenge_config.get("allowed_uris", []):
+                logger.error(f"URI {uri} is not allowed")
                 return False
+            logger.debug(f"URI {uri} is allowed")
 
         return True
