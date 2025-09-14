@@ -41,6 +41,14 @@ class yubikey_embedded_attestation:
                     base64.b64decode(extension.value)
                 )
 
+        if attestation_cert is None:
+            logger.error("CSR does not include an attestation certificate")
+            return False
+
+        if intermediate_cert is None:
+            logger.error("CSR does not include an intermediate attestation certificate")
+            return False
+
         try:
             intermediate_cert.public_key().verify(
                 attestation_cert.signature,
