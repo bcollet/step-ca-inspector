@@ -446,15 +446,3 @@ async def webhook_oidc(
         response.allow = False
 
     return response
-
-
-@app.post("/webhook/debug", tags=["webhooks"], summary="Debugging endpoint")
-async def webhook_debug(request: Request) -> webhookResponse:
-
-    response = webhookResponse
-    body = await request.json()
-    import json
-
-    print(json.dumps(body))
-    response.allow = False
-    return response
