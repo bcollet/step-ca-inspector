@@ -9,3 +9,4 @@ fastapi_utils
 typing_inspect
 hvac
 asgi_correlation_id
+pydantic-settings

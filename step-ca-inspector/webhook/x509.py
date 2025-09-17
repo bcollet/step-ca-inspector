@@ -6,16 +6,14 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from datetime import datetime, timezone
 
-PIN_POLICY = {"01": "never", "02": "once per session", "03": "always"}
+PIN_POLICY = {"01": "never", "02": "once", "03": "always"}
 
-TOUCH_POLICY = {"01": "never", "02": "always", "03": "cached for 15s"}
+TOUCH_POLICY = {"01": "never", "02": "always", "03": "cached"}
 
 logger = logging.getLogger()
 
 
 class yubikey_embedded_attestation:
-    config = {}
-
     def __init__(self, config):
         self.config = config
 
@@ -27,7 +25,7 @@ class yubikey_embedded_attestation:
 
         attestation_cert = None
         intermediate_cert = None
-        with open(self.config.get("yubikey_attestation_root"), "rb") as file:
+        with open(self.config.yubikey_attestation_root, "rb") as file:
             root_cert = x509.load_pem_x509_certificate(file.read())
 
         for extension in extensions:
@@ -111,39 +109,41 @@ class yubikey_embedded_attestation:
                 # Decode Pin Policy and Touch Policy
                 ext_data = binascii.hexlify(ext.value.value).decode("utf-8")
                 pin_policy = ext_data[:2]
-                pin_policy_str = PIN_POLICY.get(pin_policy, "Unknown")
+                pin_policy_value = PIN_POLICY.get(pin_policy)
                 touch_policy = ext_data[2:4]
-                touch_policy_str = TOUCH_POLICY.get(touch_policy, "Unknown")
+                touch_policy_value = TOUCH_POLICY.get(touch_policy)
 
-        if "yubikey_allowed_serials" not in self.config:
+        if self.config.yubikey_allowed_serials is None:
             logger.debug("No serial filtering configured")
             pass
-        elif serial_number not in self.config.get("yubikey_allowed_serials"):
+        elif serial_number not in self.config.yubikey_allowed_serials:
             logger.error(f"Yubikey S/N {serial_number} is not allowed")
             return False
         else:
             logger.debug(f"Yubikey S/N {serial_number} is allowed")
 
-        if "yubikey_allowed_pin_policy" not in self.config:
-            logger.debug("No PIN policy configured")
-            pass
-        elif pin_policy not in self.config.get("yubikey_allowed_pin_policy"):
-            logger.error(f"PIN policy “{pin_policy_str}” ({pin_policy}) is not allowed")
+        if pin_policy_value is None:
+            logger.error(f"Unknown PIN policy")
+            return False
+        elif not getattr(self.config.yubikey_pin_policies, pin_policy_value):
+            logger.error(
+                f"PIN policy “{pin_policy_value}” ({pin_policy}) is not allowed"
+            )
             return False
         else:
-            logger.debug(f"PIN policy “{pin_policy_str}” ({pin_policy}) is allowed")
+            logger.debug(f"PIN policy “{pin_policy_value}” ({pin_policy}) is allowed")
 
-        if "yubikey_allowed_touch_policy" not in self.config:
-            logger.debug("No touch policy configured")
-            pass
-        elif touch_policy not in self.config.get("yubikey_allowed_touch_policy"):
+        if pin_policy_value is None:
+            logger.error(f"Unknown touch policy")
+            return False
+        elif not getattr(self.config.yubikey_touch_policies, touch_policy_value):
             logger.error(
-                f"Touch policy “{touch_policy_str}” ({touch_policy}) is not allowed"
+                f"Touch policy “{touch_policy_value}” ({touch_policy}) is not allowed"
             )
             return False
         else:
             logger.debug(
-                f"Touch policy “{touch_policy_str}” ({touch_policy}) is allowed"
+                f"Touch policy “{touch_policy_value}” ({touch_policy}) is allowed"
             )
 
         return True

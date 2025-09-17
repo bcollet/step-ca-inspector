@@ -1,12 +1,12 @@
 from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
 from fastapi_utils.tasks import repeat_every
 from prometheus_client import make_asgi_app, Gauge
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from typing import List, Union
 from datetime import datetime
 from enum import Enum
+from config import Settings, WebhookSettings
 from models import x509_cert, ssh_cert
-from config import config
 from webhook import scep_challenge, x509
 import asgi_correlation_id
 import base64
@@ -32,10 +32,18 @@ app = FastAPI(title="step-ca Inspector API", on_startup=[configure_logging])
 app.add_middleware(asgi_correlation_id.CorrelationIdMiddleware)
 
 logger = logging.getLogger()
-config()
 
 try:
-    db = mariadb.connect(**config.database)
+    config = Settings()
+except ValidationError as e:
+    for error in e.errors():
+        logger.error(
+            f"Configuration error: {error['msg']}: {'.'.join(str(node) for node in error['loc'])}"
+        )
+    sys.exit(1)
+
+try:
+    db = mariadb.connect(**dict(config.database))
 except Exception as e:
     print(f"Could not connect to database: {e}")
     sys.exit(1)
@@ -343,22 +351,25 @@ async def webhook_validate(
     request: Request,
     x_smallstep_webhook_id: str = Header(),
     x_smallstep_signature: str = Header(),
-):
+) -> WebhookSettings:
 
     logger.debug(f"Received webhook request for webhook ID {x_smallstep_webhook_id}")
 
-    if not hasattr(config, "webhook_config"):
-        logger.error("No webhook configuration")
-        raise HTTPException(status_code=500)
+    webhook_config = next(
+        (
+            webhook
+            for webhook in config.webhook_config
+            if webhook.id == x_smallstep_webhook_id
+        ),
+        None,
+    )
 
-    if x_smallstep_webhook_id not in config.webhook_config:
+    if webhook_config is None:
         logger.error("Invalid webhook ID")
         raise HTTPException(status_code=400, detail="Invalid webhook ID")
 
-    webhook_config = config.webhook_config[x_smallstep_webhook_id]
-
     try:
-        signing_secret = base64.b64decode(webhook_config.get("secret", ""))
+        signing_secret = base64.b64decode(webhook_config.secret)
     except ValueError:
         logger.error("Misconfigured webhook secret")
         raise HTTPException(status_code=500)
@@ -394,13 +405,13 @@ def webhook_scepchallenge(
 
     logger.info("Received SCEP challenge webhook request")
 
-    if not hasattr(scep_challenge, webhook_config.get("challenge_plugin", "static")):
+    if not hasattr(scep_challenge, webhook_config.plugin.name):
         logger.error("Invalid challenge plugin configured")
         raise HTTPException(status_code=500)
 
-    validator = getattr(
-        scep_challenge, webhook_config.get("challenge_plugin", "static")
-    )(webhook_config.get("challenge_plugin_config", {}))
+    validator = getattr(scep_challenge, webhook_config.plugin.name)(
+        webhook_config.plugin
+    )
 
     if validator.validate(req):
         logger.info("Validator approved certificate request")
@@ -419,24 +430,18 @@ def webhook_scepchallenge(
 )
 async def webhook_oidc(
     req: webhookx509CertificateRequest,
-    webhook_config: dict = Depends(webhook_validate),
+    webhook_config: WebhookSettings = Depends(webhook_validate),
 ) -> webhookResponse:
 
     response = webhookResponse
 
     logger.info("Received OIDC webhook request")
 
-    if "x509_plugin" not in webhook_config:
-        logger.error("No plugin configured for this webhook")
-        raise HTTPException(status_code=500)
-
-    if not hasattr(x509, webhook_config.get("x509_plugin")):
+    if not hasattr(x509, webhook_config.plugin.name):
         logger.error("Invalid x509 plugin configured")
         raise HTTPException(status_code=500)
 
-    validator = getattr(x509, webhook_config.get("x509_plugin"))(
-        webhook_config.get("x509_plugin_config", {})
-    )
+    validator = getattr(x509, webhook_config.plugin.name)(webhook_config.plugin)
 
     if validator.validate(req):
         logger.info("Validator approved certificate request")
