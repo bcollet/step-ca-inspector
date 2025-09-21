@@ -113,7 +113,7 @@ class yubikey_embedded_attestation:
                 touch_policy = ext_data[2:4]
                 touch_policy_value = TOUCH_POLICY.get(touch_policy)
 
-        if self.config.yubikey_allowed_serials is None:
+        if len(self.config.yubikey_allowed_serials) < 1:
             logger.debug("No serial filtering configured")
             pass
         elif serial_number not in self.config.yubikey_allowed_serials:
