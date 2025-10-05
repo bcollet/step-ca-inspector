@@ -86,6 +86,10 @@ class YubikeyEmbeddedAttestationSettings(PluginSettings):
     )
 
 
+class X5cSSHPluginSettings(PluginSettings):
+    name: Literal["x5c_ssh_altnet"]
+
+
 class WebhookSettings(BaseSettings):
     id: str
     secret: str

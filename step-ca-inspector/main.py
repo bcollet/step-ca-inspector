@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import Enum
 from config import Settings, WebhookSettings
 from models import x509_cert, ssh_cert
-from webhook import scep_challenge, x509
+from webhook import scep_challenge, ssh, x509
 import asgi_correlation_id
 import base64
 import hashlib
@@ -173,11 +173,32 @@ class x509CertificateRequest(BaseModel):
     uris: Union[list, None] = None
 
 
+class sshCertificateRequest(BaseModel):
+    publicKey: bytes
+    type: str
+    keyID: str
+    principals: List[str]
+
+
+class x5CCertificate(BaseModel):
+    raw: bytes
+    publicKey: bytes
+    publicKeyAlgorithm: str
+    notBefore: str
+    notAfter: str
+
+
 class webhookSCEPChallenge(BaseModel):
     provisionerName: str
     scepChallenge: str
     scepTransactionID: str
     x509CertificateRequest: x509CertificateRequest
+
+
+class webhookX5cSSHCertificateRequest(BaseModel):
+    sshCertificateRequest: sshCertificateRequest
+    x5cCertificate: x5CCertificate
+    authorizationPrincipal: str
 
 
 class webhookx509CertificateRequest(BaseModel):
@@ -449,5 +470,37 @@ async def webhook_oidc(
     else:
         logger.warning("Validator refused certificate request")
         response.allow = False
+
+    return response
+
+
+@app.post(
+    "/webhook/ssh/x5c",
+    tags=["webhooks"],
+    summary="Validate and enrich an x5c certificate request",
+)
+async def webhook_ssh_x5c(
+    req: webhookX5cSSHCertificateRequest,
+    webhook_config: WebhookSettings = Depends(webhook_validate),
+) -> webhookResponse:
+
+    response = webhookResponse
+
+    logger.info("Received SSH X5C webhook request")
+
+    if not hasattr(ssh, webhook_config.plugin.name):
+        logger.error("Invalid ssh plugin configured")
+        raise HTTPException(status_code=500)
+
+    validator = getattr(ssh, webhook_config.plugin.name)(webhook_config.plugin)
+
+    if validator.validate(req):
+        logger.info("Validator approved certificate request")
+        response.allow = True
+        response.data = validator.data
+    else:
+        logger.warning("Validator refused certificate request")
+        response.allow = False
+
 
     return response
