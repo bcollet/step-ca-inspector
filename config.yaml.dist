@@ -8,6 +8,7 @@ database:
   ssl_verify_cert: true
   ssl_ca: "/app/root-ca.crt"
   reconnect: true
+  pool_size: 5
 webhook_config:
 - id: "<webhook_id>":
   secret: "<webhook_secret>"

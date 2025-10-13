@@ -23,6 +23,7 @@ class DatabaseSettings(BaseSettings):
     ssl_verify_cert: bool = True
     ssl_ca: Optional[str] = None
     reconnect: bool = True
+    pool_size: int = 5
 
 
 class PluginSettings(BaseSettings):

@@ -43,7 +43,11 @@ except ValidationError as e:
     sys.exit(1)
 
 try:
-    db = mariadb.connect(**dict(config.database))
+    db_pool = mariadb.ConnectionPool(
+        pool_name="step_pool",
+        pool_reset_connection=True,
+        **dict(config.database),
+    )
 except Exception as e:
     print(f"Could not connect to database: {e}")
     sys.exit(1)
@@ -240,7 +244,7 @@ class webhookResponse(BaseModel):
 @app.on_event("startup")
 @repeat_every(seconds=15, raise_exceptions=False)
 async def update_metrics():
-    x509_certs = x509_cert.list(db=db)
+    x509_certs = x509_cert.list(db_pool=db_pool)
     for cert in x509_certs:
         labels = {
             "subject": cert.subject,
@@ -258,7 +262,7 @@ async def update_metrics():
 
         x509_cert_status.labels(**labels).set(cert.status.value)
 
-    ssh_certs = ssh_cert.list(db=db)
+    ssh_certs = ssh_cert.list(db_pool=db_pool)
     for cert in ssh_certs:
         labels = {
             "principals": ",".join([x.decode() for x in cert.principals]),
@@ -285,7 +289,7 @@ def list_x509_certs(
     provisioner: str = None,
     provisioner_type: list[provisionerType] = Query(list(provisionerType)),
 ) -> list[x509Cert]:
-    certs = x509_cert.list(db, sort_key=sort_key)
+    certs = x509_cert.list(db_pool=db_pool, sort_key=sort_key)
     cert_list = []
 
     for cert in certs:
@@ -317,7 +321,7 @@ def list_x509_certs(
     "/x509/certs/{serial}", tags=["x509"], summary="Get details on an x509 certificate"
 )
 def get_x509_cert(serial: str) -> Union[x509Cert, None]:
-    cert = x509_cert.cert.from_serial(db, serial)
+    cert = x509_cert.cert.from_serial(db_pool=db_pool, serial=serial)
     if cert is None:
         return None
     cert.status = getattr(certStatus, cert.status.name)
@@ -332,7 +336,7 @@ def list_ssh_certs(
     key: str = None,
     principal: str = None,
 ) -> list[sshCert]:
-    certs = ssh_cert.list(db, sort_key=sort_key)
+    certs = ssh_cert.list(db_pool=db_pool, sort_key=sort_key)
     cert_list = []
 
     for cert in certs:
@@ -360,7 +364,7 @@ def list_ssh_certs(
     "/ssh/certs/{serial}", tags=["ssh"], summary="Get details on an SSH certificate"
 )
 def get_ssh_cert(serial: str) -> Union[sshCert, None]:
-    cert = ssh_cert.cert.from_serial(db, serial)
+    cert = ssh_cert.cert.from_serial(db_pool=db_pool, serial=serial)
     if cert is None:
         return None
     cert.type = getattr(sshCertType, cert.type.name)
@@ -501,6 +505,5 @@ async def webhook_ssh_x5c(
     else:
         logger.warning("Validator refused certificate request")
         response.allow = False
-
 
     return response

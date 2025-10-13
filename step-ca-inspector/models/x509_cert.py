@@ -9,8 +9,9 @@ from enum import Enum
 
 
 class list:
-    def __new__(cls, db, sort_key=None):
+    def __new__(cls, db_pool, sort_key=None):
         cls.certs = []
+        db = db_pool.get_connection()
         cur = db.cursor()
         cur.execute(
             """SELECT x509_certs.nvalue AS cert,
@@ -27,6 +28,7 @@ class list:
 
         cur.close()
         db.commit()
+        db.close()
 
         if sort_key is not None:
             cls.certs.sort(key=lambda item: getattr(item, sort_key))
@@ -47,8 +49,8 @@ class cert:
         self.load(cert_der, cert_data, cert_revoked)
 
     @classmethod
-    def from_serial(cls, db, serial):
-        cert = cls.get_cert(cls, db, serial)
+    def from_serial(cls, db_pool, serial):
+        cert = cls.get_cert(cls, db_pool, serial)
         if cert is None:
             return None
         return cls(cert=cert)
@@ -104,7 +106,8 @@ class cert:
         else:
             self.status = status.VALID
 
-    def get_cert(self, db, cert_serial):
+    def get_cert(self, db_pool, cert_serial):
+        db = db_pool.get_connection()
         cur = db.cursor()
         cur.execute(
             """SELECT x509_certs.nvalue AS cert,
@@ -124,6 +127,7 @@ class cert:
 
         cur.close()
         db.commit()
+        db.close()
         return cert
 
     def get_sans(self, san_data):
