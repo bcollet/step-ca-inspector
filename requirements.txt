@@ -11,3 +11,4 @@ hvac
 asgi_correlation_id
 pydantic-settings
 asn1
+packaging

@@ -79,6 +79,7 @@ class YubikeyEmbeddedAttestationSettings(PluginSettings):
     name: Literal["yubikey_embedded_attestation"]
     yubikey_attestation_root: str
     yubikey_allowed_serials: List[int] = []
+    yubikey_min_version: Optional[str] = None
     yubikey_pin_policies: Optional[YubikeyPinPolicySettings] = (
         YubikeyPinPolicySettings()
     )

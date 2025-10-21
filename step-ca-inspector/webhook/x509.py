@@ -1,10 +1,11 @@
+import asn1
 import base64
-import binascii
 import logging
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from datetime import datetime, timezone
+from packaging.version import Version
 
 PIN_POLICY = {"01": "never", "02": "once", "03": "always"}
 
@@ -93,27 +94,42 @@ class yubikey_embedded_attestation:
             logger.error("CSR and attestation public keys do not match")
             return False
 
-        firmware_version = serial_number = pin_policy = touch_policy = "Not Found"
+        firmware_version = serial_number = pin_policy = touch_policy = None
         # https://docs.yubico.com/hardware/oid/webdocs.pdf
         for ext in attestation_cert.extensions:
             if ext.oid.dotted_string == "1.3.6.1.4.1.41482.3.3":
                 # Decode Firmware Version
-                ext_data = binascii.hexlify(ext.value.value).decode("utf-8")
-                firmware_version = f"{int(ext_data[:2], 16)}.{int(ext_data[2:4], 16)}.{int(ext_data[4:6], 16)}"
+                firmware_version = "%d.%d.%d" % tuple(ext.value.value[:3])
             elif ext.oid.dotted_string == "1.3.6.1.4.1.41482.3.7":
                 # Decode Serial Number
-                ext_data = ext.value.value
-                # Assuming the first two bytes are not part of the serial number, skip them
-                serial_number = int(binascii.hexlify(ext_data[2:]), 16)
+                decoder = asn1.Decoder()
+                decoder.start(ext.value.value)
+                _, serial_number = decoder.read()
             elif ext.oid.dotted_string == "1.3.6.1.4.1.41482.3.8":
                 # Decode Pin Policy and Touch Policy
-                ext_data = binascii.hexlify(ext.value.value).decode("utf-8")
-                pin_policy = ext_data[:2]
+                pin_policy = bytes.hex(ext.value.value[:1])
                 pin_policy_value = PIN_POLICY.get(pin_policy)
-                touch_policy = ext_data[2:4]
+                touch_policy = bytes.hex(ext.value.value[1:2])
                 touch_policy_value = TOUCH_POLICY.get(touch_policy)
 
-        if len(self.config.yubikey_allowed_serials) < 1:
+        if firmware_version is None:
+            logger.error(f"Unknown firmware version")
+            return False
+        elif self.config.yubikey_min_version is None:
+            logger.debug("No minimal firmware version required")
+            pass
+        elif Version(firmware_version) < Version(self.config.yubikey_min_version):
+            logger.error(
+                f"Yubikey version {firmware_version} is below required version ({self.config.yubikey_min_version})"
+            )
+            return False
+        else:
+            logger.debug(f"Yubikey version {firmware_version} is allowed")
+
+        if serial_number is None:
+            logger.error(f"Unknown serial number")
+            return False
+        elif len(self.config.yubikey_allowed_serials) < 1:
             logger.debug("No serial filtering configured")
             pass
         elif serial_number not in self.config.yubikey_allowed_serials:
