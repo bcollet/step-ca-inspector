@@ -244,7 +244,9 @@ class webhookResponse(BaseModel):
 @app.on_event("startup")
 @repeat_every(seconds=15, raise_exceptions=False)
 async def update_metrics():
-    x509_certs = x509_cert.list(db_pool=db_pool)
+    x509_certs = x509_cert.list(
+        db_pool=db_pool, expired_max_days=config.metrics_cert_expired_max_days
+    )
     for cert in x509_certs:
         labels = {
             "subject": cert.subject,
@@ -262,7 +264,9 @@ async def update_metrics():
 
         x509_cert_status.labels(**labels).set(cert.status.value)
 
-    ssh_certs = ssh_cert.list(db_pool=db_pool)
+    ssh_certs = ssh_cert.list(
+        db_pool=db_pool, expired_max_days=config.metrics_cert_expired_max_days
+    )
     for cert in ssh_certs:
         labels = {
             "principals": ",".join([x.decode() for x in cert.principals]),
@@ -284,12 +288,15 @@ async def update_metrics():
 def list_x509_certs(
     sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
     cert_status: list[certStatus] = Query(["Valid"]),
+    cert_expired_max_days: int = 30,
     subject: str = None,
     san: str = None,
     provisioner: str = None,
     provisioner_type: list[provisionerType] = Query(list(provisionerType)),
 ) -> list[x509Cert]:
-    certs = x509_cert.list(db_pool=db_pool, sort_key=sort_key)
+    certs = x509_cert.list(
+        db_pool=db_pool, sort_key=sort_key, expired_max_days=cert_expired_max_days
+    )
     cert_list = []
 
     for cert in certs:
@@ -333,10 +340,13 @@ def list_ssh_certs(
     sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
     cert_type: list[sshCertType] = Query(["Host", "User"]),
     cert_status: list[certStatus] = Query(["Valid"]),
+    cert_expired_max_days: int = 30,
     key: str = None,
     principal: str = None,
 ) -> list[sshCert]:
-    certs = ssh_cert.list(db_pool=db_pool, sort_key=sort_key)
+    certs = ssh_cert.list(
+        db_pool=db_pool, sort_key=sort_key, expired_max_days=cert_expired_max_days
+    )
     cert_list = []
 
     for cert in certs:

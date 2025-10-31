@@ -9,7 +9,7 @@ from enum import Enum
 
 
 class list:
-    def __new__(cls, db_pool, sort_key=None):
+    def __new__(cls, db_pool, sort_key=None, expired_max_days=30):
         cls.certs = []
         db = db_pool.get_connection()
         cur = db.cursor()
@@ -22,8 +22,17 @@ class list:
                LEFT JOIN revoked_x509_certs USING(nkey)"""
         )
 
+        expired_max_date = datetime.timestamp(
+            datetime.now(timezone.utc).replace(microsecond=0)
+            - timedelta(days=expired_max_days)
+        )
+
         for result in cur:
             cert_object = cert(result)
+
+            if cert_object.not_after < expired_max_date:
+                continue
+
             cls.certs.append(cert_object)
 
         cur.close()

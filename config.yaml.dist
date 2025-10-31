@@ -9,6 +9,7 @@ database:
   ssl_ca: "/app/root-ca.crt"
   reconnect: true
   pool_size: 5
+metrics_cert_expired_max_days: 30
 webhook_config:
 - id: "<webhook_id>":
   secret: "<webhook_secret>"

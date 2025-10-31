@@ -100,6 +100,7 @@ class WebhookSettings(BaseSettings):
 
 class Settings(BaseSettings):
     database: DatabaseSettings
+    metrics_cert_expired_max_days: Optional[int] = 30
     webhook_config: list[WebhookSettings]
 
     @field_validator("webhook_config", mode="after")
