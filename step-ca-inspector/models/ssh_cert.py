@@ -1,7 +1,6 @@
 import base64
 import dateutil
 import json
-import mariadb
 from cryptography.hazmat.primitives import asymmetric, hashes, serialization
 from datetime import datetime, timedelta, timezone
 from struct import unpack

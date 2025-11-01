@@ -1,7 +1,6 @@
 import binascii
 import dateutil
 import json
-import mariadb
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from datetime import datetime, timedelta, timezone

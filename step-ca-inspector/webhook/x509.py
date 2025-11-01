@@ -21,7 +21,6 @@ class yubikey_embedded_attestation:
     def validate(self, req):
         logger.debug("Validating with yubikey_embedded_attestation plugin")
         pub_key = req.x509CertificateRequest.publicKey
-        pub_alg = req.x509CertificateRequest.publicKeyAlgorithm
         extensions = req.x509CertificateRequest.extensions
 
         attestation_cert = None
@@ -113,7 +112,7 @@ class yubikey_embedded_attestation:
                 touch_policy_value = TOUCH_POLICY.get(touch_policy)
 
         if firmware_version is None:
-            logger.error(f"Unknown firmware version")
+            logger.error("Unknown firmware version")
             return False
         elif self.config.yubikey_min_version is None:
             logger.debug("No minimal firmware version required")
@@ -127,7 +126,7 @@ class yubikey_embedded_attestation:
             logger.debug(f"Yubikey version {firmware_version} is allowed")
 
         if serial_number is None:
-            logger.error(f"Unknown serial number")
+            logger.error("Unknown serial number")
             return False
         elif len(self.config.yubikey_allowed_serials) < 1:
             logger.debug("No serial filtering configured")
@@ -139,7 +138,7 @@ class yubikey_embedded_attestation:
             logger.debug(f"Yubikey S/N {serial_number} is allowed")
 
         if pin_policy_value is None:
-            logger.error(f"Unknown PIN policy")
+            logger.error("Unknown PIN policy")
             return False
         elif not getattr(self.config.yubikey_pin_policies, pin_policy_value):
             logger.error(
@@ -150,7 +149,7 @@ class yubikey_embedded_attestation:
             logger.debug(f"PIN policy “{pin_policy_value}” ({pin_policy}) is allowed")
 
         if pin_policy_value is None:
-            logger.error(f"Unknown touch policy")
+            logger.error("Unknown touch policy")
             return False
         elif not getattr(self.config.yubikey_touch_policies, touch_policy_value):
             logger.error(

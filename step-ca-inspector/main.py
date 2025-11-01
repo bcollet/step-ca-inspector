@@ -3,7 +3,6 @@ from fastapi_utils.tasks import repeat_every
 from prometheus_client import make_asgi_app, Gauge
 from pydantic import BaseModel, ValidationError
 from typing import List, Union
-from datetime import datetime
 from enum import Enum
 from config import Settings, WebhookSettings
 from models import x509_cert, ssh_cert
