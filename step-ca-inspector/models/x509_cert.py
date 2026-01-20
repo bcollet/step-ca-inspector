@@ -156,7 +156,7 @@ class cert:
             elif isinstance(san_value, x509.general_name.RegisteredID):
                 san["type"] = "RegisteredID"
             elif isinstance(san_value, x509.general_name.OtherName):
-                san["type"] = "Other ({san_value.type_id})"
+                san["type"] = f"Other ({san_value.type_id})"
             else:
                 continue
 
