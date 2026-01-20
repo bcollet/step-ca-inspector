@@ -1,3 +1,4 @@
+import asn1
 import binascii
 import dateutil
 import json
@@ -156,11 +157,20 @@ class cert:
             elif isinstance(san_value, x509.general_name.RegisteredID):
                 san["type"] = "RegisteredID"
             elif isinstance(san_value, x509.general_name.OtherName):
-                san["type"] = f"Other ({san_value.type_id})"
+                if san_value.type_id == x509.oid.OtherNameFormOID.PERMANENT_IDENTIFIER:
+                    san["type"] = f"Other (Permanent Identifier)"
+                    decoder = asn1.Decoder()
+                    decoder.start(san_value.value)
+                    _, permanent_identifier = decoder.read()
+                    san["value"] = ", ".join(permanent_identifier)
+                else:
+                    san["type"] = f"Other ({san_value.type_id.dotted_string})"
+                    san["value"] = "Unsupported"
             else:
                 continue
 
-            san["value"] = san_value.value
+            if not "value" in san:
+                san["value"] = san_value.value
             sans.append(san)
 
         return sans

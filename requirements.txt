@@ -1,5 +1,5 @@
 PyYAML
-cryptography
+cryptography >= 45.0.0
 mariadb
 python-dateutil
 uvicorn
