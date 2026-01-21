@@ -27,6 +27,16 @@ class PluginSettings(BaseSettings):
     pass
 
 
+class AcmeAllowedDevicesPluginSettings(BaseSettings):
+    permanent_identifier: str
+    organizational_unit: Union[str, None] = None
+
+
+class AcmePluginSettings(PluginSettings):
+    name: Literal["acme_da_altnet"]
+    allowed_devices: List[AcmeAllowedDevicesPluginSettings] = []
+
+
 class ChallengeStaticSCEPPluginSettings(BaseSettings):
     secret: str
     allowed_dns_names: List[str] = []

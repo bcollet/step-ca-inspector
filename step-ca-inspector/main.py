@@ -131,6 +131,10 @@ class sanName(BaseModel):
     value: str
 
 
+class x509AttestationData(BaseModel):
+    permanentIdentifier: str
+
+
 class x509Cert(BaseModel):
     serial: str
     subject: str
@@ -210,6 +214,10 @@ class webhookx509CertificateRequest(BaseModel):
     x509CertificateRequest: x509CertificateRequest
 
 
+class webhookx509AcmeCertificateRequest(webhookx509CertificateRequest):
+    attestationData: Union[x509AttestationData, None] = None
+
+
 class sshCertType(str, Enum):
     HOST = "Host"
     USER = "User"
@@ -241,7 +249,7 @@ class webhookResponse(BaseModel):
 
 
 @app.on_event("startup")
-@repeat_every(seconds=15, raise_exceptions=False)
+@repeat_every(seconds=15, raise_exceptions=False, logger=logger)
 async def update_metrics():
     x509_certs = x509_cert.list(
         db_pool=db_pool, expired_max_days=config.metrics_cert_expired_max_days
@@ -506,6 +514,37 @@ async def webhook_ssh_x5c(
         raise HTTPException(status_code=500)
 
     validator = getattr(ssh, webhook_config.plugin.name)(webhook_config.plugin)
+
+    if validator.validate(req):
+        logger.info("Validator approved certificate request")
+        response.allow = True
+        response.data = validator.data
+    else:
+        logger.warning("Validator refused certificate request")
+        response.allow = False
+
+    return response
+
+
+@app.post(
+    "/webhook/x509/acme",
+    tags=["webhooks"],
+    summary="Valiate and enrich an ACME X509 certificate request",
+)
+async def webhook_oidc(
+    req: webhookx509AcmeCertificateRequest,
+    webhook_config: WebhookSettings = Depends(webhook_validate),
+) -> webhookResponse:
+
+    response = webhookResponse
+
+    logger.info("Received ACME webhook request")
+
+    if not hasattr(x509, webhook_config.plugin.name):
+        logger.error("Invalid x509 plugin configured")
+        raise HTTPException(status_code=500)
+
+    validator = getattr(x509, webhook_config.plugin.name)(webhook_config.plugin)
 
     if validator.validate(req):
         logger.info("Validator approved certificate request")

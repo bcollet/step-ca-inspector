@@ -162,3 +162,43 @@ class yubikey_embedded_attestation:
             )
 
         return True
+
+
+class acme_da_altnet:
+    def __init__(self, config):
+        self.config = config
+        self.data = {}
+
+    def validate(self, req):
+        logger.debug("Validating with acme_da_altnet plugin")
+        pub_key = req.x509CertificateRequest.publicKey
+        extensions = req.x509CertificateRequest.extensions
+
+        if req.attestationData is None:
+            logger.error("No attestation data present")
+            return False
+
+        device_config = next(
+            (
+                device
+                for device in self.config.allowed_devices
+                if device.permanent_identifier
+                == req.attestationData.permanentIdentifier
+            ),
+            None,
+        )
+
+        if device_config is None:
+            logger.error(
+                f"Permanent Identifier {req.attestationData.permanentIdentifier} is not allowed"
+            )
+            return False
+        else:
+            logger.debug(
+                f"Permanent Identifier {device_config.permanent_identifier} is allowed"
+            )
+
+        self.data["permanent_identifier"] = device_config.permanent_identifier
+        self.data["organizational_unit"] = device_config.organizational_unit
+
+        return True
