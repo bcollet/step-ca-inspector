@@ -4,6 +4,9 @@ import logging
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+
+# FIXME: Move webhookResponse elsewhere
+import main
 from datetime import datetime, timezone
 from packaging.version import Version
 
@@ -20,6 +23,8 @@ class yubikey_embedded_attestation:
 
     def validate(self, req):
         logger.debug("Validating with yubikey_embedded_attestation plugin")
+
+        response = main.webhookResponse(allow=False)
         pub_key = req.x509CertificateRequest.publicKey
         extensions = req.x509CertificateRequest.extensions
 
@@ -41,11 +46,11 @@ class yubikey_embedded_attestation:
 
         if attestation_cert is None:
             logger.error("CSR does not include an attestation certificate")
-            return False
+            return response
 
         if intermediate_cert is None:
             logger.error("CSR does not include an intermediate attestation certificate")
-            return False
+            return response
 
         try:
             intermediate_cert.public_key().verify(
@@ -57,7 +62,7 @@ class yubikey_embedded_attestation:
             logger.debug("Valid intermediate attestation certificate signature")
         except Exception as e:
             logger.error(f"Invalid intermediate attestation certificate signature {e}")
-            return False
+            return response
 
         try:
             root_cert.public_key().verify(
@@ -69,7 +74,7 @@ class yubikey_embedded_attestation:
             logger.debug("Valid root attestation certificate signature")
         except Exception as e:
             logger.error(f"Invalid root attestation certificate signature: {e}")
-            return False
+            return response
 
         current_time = datetime.now(timezone.utc)
         for cert in [attestation_cert, intermediate_cert, root_cert]:
@@ -79,7 +84,7 @@ class yubikey_embedded_attestation:
                 logger.error(
                     f"Certificate {cert.subject.rfc4514_string()} is not valid"
                 )
-                return False
+                return response
 
         csr_public_key_bytes = base64.b64decode(pub_key)
         attestation_public_key_bytes = attestation_cert.public_key().public_bytes(
@@ -91,7 +96,7 @@ class yubikey_embedded_attestation:
             logger.debug("CSR and attestation public keys match")
         else:
             logger.error("CSR and attestation public keys do not match")
-            return False
+            return response
 
         firmware_version = serial_number = pin_policy = touch_policy = None
         # https://docs.yubico.com/hardware/oid/webdocs.pdf
@@ -113,7 +118,7 @@ class yubikey_embedded_attestation:
 
         if firmware_version is None:
             logger.error("Unknown firmware version")
-            return False
+            return response
         elif self.config.yubikey_min_version is None:
             logger.debug("No minimal firmware version required")
             pass
@@ -121,62 +126,64 @@ class yubikey_embedded_attestation:
             logger.error(
                 f"Yubikey version {firmware_version} is below required version ({self.config.yubikey_min_version})"
             )
-            return False
+            return response
         else:
             logger.debug(f"Yubikey version {firmware_version} is allowed")
 
         if serial_number is None:
             logger.error("Unknown serial number")
-            return False
+            return response
         elif len(self.config.yubikey_allowed_serials) < 1:
             logger.debug("No serial filtering configured")
             pass
         elif serial_number not in self.config.yubikey_allowed_serials:
             logger.error(f"Yubikey S/N {serial_number} is not allowed")
-            return False
+            return response
         else:
             logger.debug(f"Yubikey S/N {serial_number} is allowed")
 
         if pin_policy_value is None:
             logger.error("Unknown PIN policy")
-            return False
+            return response
         elif not getattr(self.config.yubikey_pin_policies, pin_policy_value):
             logger.error(
                 f"PIN policy “{pin_policy_value}” ({pin_policy}) is not allowed"
             )
-            return False
+            return response
         else:
             logger.debug(f"PIN policy “{pin_policy_value}” ({pin_policy}) is allowed")
 
         if pin_policy_value is None:
             logger.error("Unknown touch policy")
-            return False
+            return response
         elif not getattr(self.config.yubikey_touch_policies, touch_policy_value):
             logger.error(
                 f"Touch policy “{touch_policy_value}” ({touch_policy}) is not allowed"
             )
-            return False
+            return response
         else:
             logger.debug(
                 f"Touch policy “{touch_policy_value}” ({touch_policy}) is allowed"
             )
 
-        return True
+        response.allow = True
+        return response
 
 
-class acme_da_altnet:
+class acme_da_static:
     def __init__(self, config):
         self.config = config
-        self.data = {}
 
     def validate(self, req):
-        logger.debug("Validating with acme_da_altnet plugin")
+        logger.debug("Validating with acme_da_static plugin")
+
+        response = main.webhookResponse(allow=False)
         pub_key = req.x509CertificateRequest.publicKey
         extensions = req.x509CertificateRequest.extensions
 
         if req.attestationData is None:
             logger.error("No attestation data present")
-            return False
+            return response
 
         device_config = next(
             (
@@ -192,13 +199,17 @@ class acme_da_altnet:
             logger.error(
                 f"Permanent Identifier {req.attestationData.permanentIdentifier} is not allowed"
             )
-            return False
+            return response
         else:
             logger.debug(
                 f"Permanent Identifier {device_config.permanent_identifier} is allowed"
             )
 
-        self.data["permanent_identifier"] = device_config.permanent_identifier
-        self.data["organizational_unit"] = device_config.organizational_unit
+        response.allow = True
+        response.data = {
+            "permanent_identifier": device_config.permanent_identifier,
+            "organizational_unit": device_config.organizational_unit,
+        }
 
-        return True
+
+        return response

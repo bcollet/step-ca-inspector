@@ -33,7 +33,7 @@ class AcmeAllowedDevicesPluginSettings(BaseSettings):
 
 
 class AcmePluginSettings(PluginSettings):
-    name: Literal["acme_da_altnet"]
+    name: Literal["acme_da_static"]
     allowed_devices: List[AcmeAllowedDevicesPluginSettings] = []
 
 

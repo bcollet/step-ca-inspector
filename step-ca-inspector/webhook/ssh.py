@@ -4,17 +4,20 @@ import logging
 from cryptography import x509
 from cryptography.hazmat.primitives import serialization
 
+# FIXME: Move webhookResponse elsewhere
+import main
+
 logger = logging.getLogger()
 
 
 class x5c_ssh_altnet:
     def __init__(self, config):
         self.config = config
-        self.data = {}
 
     def validate(self, req):
         logger.debug("Validating with x5c_ssh_altnet plugin")
 
+        response = main.webhookResponse(allow=False)
         cert = x509.load_der_x509_certificate(base64.b64decode(req.x5cCertificate.raw))
 
         ssh_cert_allowed = False
@@ -32,14 +35,14 @@ class x5c_ssh_altnet:
 
         if not ssh_cert_allowed:
             logger.error("SSH Cert is not allowed for this certificate")
-            return False
+            return response
 
         ssh_pub_key_raw = base64.b64decode(req.sshCertificateRequest.publicKey)
         x5c_pub_key_bytes = base64.b64decode(req.x5cCertificate.publicKey)
 
         if len(ssh_pub_key_raw) < 4:
             logger.error("Invalid SSH public key")
-            return False
+            return response
 
         ssh_key_type_length = int.from_bytes(
             ssh_pub_key_raw[:4], byteorder="big", signed=False
@@ -49,7 +52,7 @@ class x5c_ssh_altnet:
 
         if len(ssh_pub_key_raw) < ssh_key_type_length:
             logger.error("Invalid SSH public key")
-            return False
+            return response
 
         ssh_pub_key = (
             ssh_pub_key_raw[:ssh_key_type_length]
@@ -65,7 +68,8 @@ class x5c_ssh_altnet:
             logger.debug("CSR and attestation public keys match")
         else:
             logger.error("CSR and attestation public keys do not match")
-            return False
+            return response
 
-        self.data["principals"] = principals
-        return True
+        response.allow = True
+        response.data = {"principals": principals}
+        return response
