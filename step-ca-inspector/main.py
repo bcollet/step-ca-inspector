@@ -455,12 +455,11 @@ def webhook_scepchallenge(
         webhook_config.plugin
     )
 
-    if validator.validate(req):
+    response = validator.validate(req)
+    if response.allow:
         logger.info("Validator approved certificate request")
-        response.allow = True
     else:
         logger.warning("Validator refused certificate request")
-        response.allow = False
 
     return response
 
@@ -475,8 +474,6 @@ async def webhook_oidc(
     webhook_config: WebhookSettings = Depends(webhook_validate),
 ) -> webhookResponse:
 
-    response = webhookResponse
-
     logger.info("Received OIDC webhook request")
 
     if not hasattr(x509, webhook_config.plugin.name):
@@ -484,13 +481,12 @@ async def webhook_oidc(
         raise HTTPException(status_code=500)
 
     validator = getattr(x509, webhook_config.plugin.name)(webhook_config.plugin)
+    response = validator.validate(req)
 
-    if validator.validate(req):
+    if response.allow:
         logger.info("Validator approved certificate request")
-        response.allow = True
     else:
         logger.warning("Validator refused certificate request")
-        response.allow = False
 
     return response
 
@@ -505,8 +501,6 @@ async def webhook_ssh_x5c(
     webhook_config: WebhookSettings = Depends(webhook_validate),
 ) -> webhookResponse:
 
-    response = webhookResponse
-
     logger.info("Received SSH X5C webhook request")
 
     if not hasattr(ssh, webhook_config.plugin.name):
@@ -514,14 +508,12 @@ async def webhook_ssh_x5c(
         raise HTTPException(status_code=500)
 
     validator = getattr(ssh, webhook_config.plugin.name)(webhook_config.plugin)
+    response = validator.validate(req)
 
-    if validator.validate(req):
+    if response.allow:
         logger.info("Validator approved certificate request")
-        response.allow = True
-        response.data = validator.data
     else:
         logger.warning("Validator refused certificate request")
-        response.allow = False
 
     return response
 
@@ -536,8 +528,6 @@ async def webhook_oidc(
     webhook_config: WebhookSettings = Depends(webhook_validate),
 ) -> webhookResponse:
 
-    response = webhookResponse
-
     logger.info("Received ACME webhook request")
 
     if not hasattr(x509, webhook_config.plugin.name):
@@ -545,13 +535,11 @@ async def webhook_oidc(
         raise HTTPException(status_code=500)
 
     validator = getattr(x509, webhook_config.plugin.name)(webhook_config.plugin)
+    response = validator.validate(req)
 
-    if validator.validate(req):
+    if response.allow:
         logger.info("Validator approved certificate request")
-        response.allow = True
-        response.data = validator.data
     else:
         logger.warning("Validator refused certificate request")
-        response.allow = False
 
     return response

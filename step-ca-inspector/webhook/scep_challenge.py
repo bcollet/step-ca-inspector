@@ -4,6 +4,9 @@ from config import VaultAuthMethod
 import hvac
 import logging
 
+# FIXME: Move webhookResponse elsewhere
+import main
+
 
 logger = logging.getLogger()
 
@@ -31,6 +34,8 @@ class hashicorp_vault:
 
     def validate(self, req):
         logger.debug("Validating with hashicorp_vault plugin")
+
+        response = main.webhookResponse(allow=False)
         cn = req.x509CertificateRequest.subject.get("commonName")
 
         try:
@@ -40,13 +45,13 @@ class hashicorp_vault:
             )
         except hvac.exceptions.VaultError as e:
             logger.warning(f"HashiCorp Vault error: {e}")
-            return False
+            return response
 
         challenge = secret["data"]["data"].get(self.config.hvac_challenge_key)
 
         if req.scepChallenge != challenge:
             logger.error("SCEP challenge does not match")
-            return False
+            return response
 
         allowed_dns_names = secret["data"]["data"].get(
             self.config.hvac_allowed_dns_names_key, []
@@ -66,27 +71,28 @@ class hashicorp_vault:
                     break
             else:
                 logger.error(f"DNS name {dns_name} is not allowed")
-                return False
+                return response
 
         for email_address in req.x509CertificateRequest.emailAddresses or []:
             if email_address not in allowed_email_addresses:
                 logger.error(f"Email address {email_address} is not allowed")
-                return False
+                return response
             logger.debug(f"Email address {email_address} is allowed")
 
         for ip_address in req.x509CertificateRequest.ipAddresses or []:
             if ip_address not in allowed_ip_addresses:
                 logger.error(f"IP address {ip_address} is not allowed")
-                return False
+                return response
             logger.debug(f"IP address {ip_address} is allowed")
 
         for uri in req.x509CertificateRequest.uris or []:
             if uri not in allowed_uris:
                 logger.error(f"URI {uri} is not allowed")
-                return False
+                return response
             logger.debug(f"URI {uri} is allowed")
 
-        return True
+        response.allow = True
+        return response
 
 
 class scep_static:
@@ -95,6 +101,8 @@ class scep_static:
 
     def validate(self, req):
         logger.debug("Validating with static plugin")
+
+        response = main.webhookResponse
 
         challenge_config = next(
             (
@@ -107,7 +115,7 @@ class scep_static:
 
         if challenge_config is None:
             logger.error("SCEP challenge does not match")
-            return False
+            return response
 
         cn = req.x509CertificateRequest.subject.get("commonName")
 
@@ -117,7 +125,7 @@ class scep_static:
                 break
         else:
             logger.error(f"Subject CN={cn} is not allowed")
-            return False
+            return response
 
         for dns_name in req.x509CertificateRequest.dnsNames or []:
             for allowed_dns_name in challenge_config.allowed_dns_names:
@@ -126,24 +134,25 @@ class scep_static:
                     break
             else:
                 logger.error(f"DNS name {dns_name} is not allowed")
-                return False
+                return response
 
         for email_address in req.x509CertificateRequest.emailAddresses or []:
             if email_address not in challenge_config.allowed_email_addresses:
                 logger.error(f"Email address {email_address} is not allowed")
-                return False
+                return response
             logger.debug(f"Email address {email_address} is allowed")
 
         for ip_address in req.x509CertificateRequest.ipAddresses or []:
             if ip_address not in challenge_config.allowed_ip_addresses:
                 logger.error(f"IP address {ip_address} is not allowed")
-                return False
+                return response
             logger.debug(f"IP address {ip_address} is allowed")
 
         for uri in req.x509CertificateRequest.uris or []:
             if uri not in challenge_config.allowed_uris:
                 logger.error(f"URI {uri} is not allowed")
-                return False
+                return response
             logger.debug(f"URI {uri} is allowed")
 
-        return True
+        response.allow = True
+        return response
