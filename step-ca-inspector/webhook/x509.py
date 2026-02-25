@@ -1,9 +1,11 @@
 import asn1
 import base64
 import logging
+import hvac
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
+from config import VaultAuthMethod
 
 # FIXME: Move webhookResponse elsewhere
 import main
@@ -211,5 +213,67 @@ class acme_da_static:
             "organizational_unit": device_config.organizational_unit,
         }
 
+        return response
+
+
+class acme_da_hashicorp_vault:
+    def __init__(self, config):
+        self.config = config
+        self.client = hvac.Client(**self.config.hvac_connection)
+
+        if self.config.hvac_auth_method == VaultAuthMethod.TOKEN:
+            self.client.token = self.config.hvac_token
+        elif self.config.hvac_auth_method == VaultAuthMethod.APPROLE:
+            try:
+                self.client.auth.approle.login(
+                    role_id=self.config.hvac_role_id,
+                    secret_id=self.config.hvac_secret_id,
+                )
+            except hvac.exceptions.VaultError as e:
+                logger.error(f"HashiCorp Vault error: {e}")
+                raise HTTPException(status_code=500)
+
+        if not self.client.is_authenticated():
+            logger.error("HashiCorp Vault client is not authenticated")
+            raise HTTPException(status_code=500)
+
+    def validate(self, req):
+        logger.debug("Validating with acme_ca_hashicorp_vault plugin")
+
+        response = main.webhookResponse(allow=False)
+        pub_key = req.x509CertificateRequest.publicKey
+        extensions = req.x509CertificateRequest.extensions
+
+        if req.attestationData is None:
+            logger.error("No attestation data present")
+            return response
+
+        try:
+            secret = self.client.secrets.kv.v2.read_secret(
+                path=self.config.hvac_secret_path
+                % req.attestationData.permanentIdentifier,
+                mount_point=self.config.hvac_engine,
+            )
+        except hvac.exceptions.VaultError as e:
+            logger.warning(f"HashiCorp Vault error: {e}")
+            return response
+
+        ou = secret["data"]["data"].get(self.config.hvac_organizational_unit)
+
+        if ou is None:
+            logger.error(
+                f"Permanent Identifier {req.attestationData.permanentIdentifier} is not allowed"
+            )
+            return response
+        else:
+            logger.debug(
+                f"Permanent Identifier {req.attestationData.permanentIdentifier} is allowed"
+            )
+
+        response.allow = True
+        response.data = {
+            "permanent_identifier": req.attestationData.permanentIdentifier,
+            "organizational_unit": ou,
+        }
 
         return response

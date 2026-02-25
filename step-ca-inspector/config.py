@@ -70,6 +70,19 @@ class VaultPluginSettings(PluginSettings):
     hvac_allowed_uris: str = "allowed_uris"
 
 
+class AcmeVaultPluginSettings(PluginSettings):
+    name: Literal["acme_da_hashicorp_vault"]
+    hvac_connection: dict = {}
+    hvac_auth_method: VaultAuthMethod = VaultAuthMethod.TOKEN
+    hvac_token: Optional[str] = None
+    hvac_role_id: Optional[str] = None
+    hvac_secret_id: Optional[str] = None
+    hvac_engine: str
+    hvac_secret_path: str = "%s"
+    hvac_challenge_key: str = "challenge"
+    hvac_organizational_unit: str = "organizational_unit"
+
+
 class YubikeyPinPolicySettings(BaseSettings):
     never: Optional[bool] = True
     once: Optional[bool] = True
