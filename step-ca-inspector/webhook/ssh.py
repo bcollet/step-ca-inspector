@@ -1,11 +1,12 @@
-import asn1
 import base64
 import logging
-from cryptography import x509
-from cryptography.hazmat.primitives import serialization
+
+import asn1
 
 # FIXME: Move webhookResponse elsewhere
 import main
+from cryptography import x509
+from cryptography.hazmat.primitives import serialization
 
 logger = logging.getLogger()
 

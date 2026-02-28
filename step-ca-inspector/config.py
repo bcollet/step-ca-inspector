@@ -1,14 +1,15 @@
 import os
+from enum import Enum
+from typing import Literal, Optional, Union
+
+from pydantic import Field, field_validator
+from pydantic_core import PydanticCustomError
 from pydantic_settings import (
     BaseSettings,
     EnvSettingsSource,
     PydanticBaseSettingsSource,
     YamlConfigSettingsSource,
 )
-from pydantic import field_validator, Field
-from pydantic_core import PydanticCustomError
-from typing import Optional, Literal, Union, List
-from enum import Enum
 
 
 class DatabaseSettings(BaseSettings):
@@ -34,19 +35,19 @@ class AcmeAllowedDevicesPluginSettings(BaseSettings):
 
 class AcmePluginSettings(PluginSettings):
     name: Literal["acme_da_static"]
-    allowed_devices: List[AcmeAllowedDevicesPluginSettings] = []
+    allowed_devices: list[AcmeAllowedDevicesPluginSettings] = []
 
 
 class ChallengeStaticSCEPPluginSettings(BaseSettings):
     secret: str
-    allowed_dns_names: List[str] = []
-    allowed_email_addresses: List[str] = []
-    allowed_ip_addresses: List[str] = []
+    allowed_dns_names: list[str] = []
+    allowed_email_addresses: list[str] = []
+    allowed_ip_addresses: list[str] = []
 
 
 class StaticSCEPPluginSettings(PluginSettings):
     name: Literal["scep_static"]
-    challenges: List[ChallengeStaticSCEPPluginSettings]
+    challenges: list[ChallengeStaticSCEPPluginSettings]
 
 
 class VaultAuthMethod(str, Enum):
@@ -98,7 +99,7 @@ class YubikeyTouchPolicySettings(BaseSettings):
 class YubikeyEmbeddedAttestationSettings(PluginSettings):
     name: Literal["yubikey_embedded_attestation"]
     yubikey_attestation_root: str
-    yubikey_allowed_serials: List[int] = []
+    yubikey_allowed_serials: list[int] = []
     yubikey_min_version: Optional[str] = None
     yubikey_pin_policies: Optional[YubikeyPinPolicySettings] = (
         YubikeyPinPolicySettings()
