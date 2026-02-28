@@ -1,20 +1,23 @@
-from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
-from fastapi_utils.tasks import repeat_every
-from prometheus_client import make_asgi_app, Gauge
-from pydantic import BaseModel, ValidationError
-from typing import List, Union
-from enum import Enum
-from config import Settings, WebhookSettings
-from models import x509_cert, ssh_cert
-from webhook import scep_challenge, ssh, x509
-import asgi_correlation_id
 import base64
 import hashlib
 import hmac
 import logging
-import mariadb
 import os
 import sys
+from enum import Enum
+from typing import Union
+
+import asgi_correlation_id
+import mariadb
+from config import Settings, WebhookSettings
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi_utils.tasks import repeat_every
+from models import ssh_cert, x509_cert
+from prometheus_client import Gauge, make_asgi_app
+from pydantic import BaseModel, ValidationError
+from webhook import scep_challenge, ssh, x509
 
 
 def configure_logging():
@@ -27,7 +30,11 @@ def configure_logging():
     )
 
 
-app = FastAPI(title="step-ca Inspector API", on_startup=[configure_logging])
+app = FastAPI(
+    title="step-ca Inspector API",
+    on_startup=[configure_logging],
+    strict_content_type=False,
+)
 app.add_middleware(asgi_correlation_id.CorrelationIdMiddleware)
 
 logger = logging.getLogger()
@@ -138,7 +145,7 @@ class x509AttestationData(BaseModel):
 class x509Cert(BaseModel):
     serial: str
     subject: str
-    san_names: List[sanName] = []
+    san_names: list[sanName] = []
     provisioner: provisioner
     not_after: int
     not_before: int
@@ -171,8 +178,8 @@ class x509CertificateRequest(BaseModel):
 
     subject: dict
 
-    extensions: Union[List[x509Extension], None] = None
-    extraExtensions: Union[List[x509Extension], None] = None
+    extensions: Union[list[x509Extension], None] = None
+    extraExtensions: Union[list[x509Extension], None] = None
 
     dnsNames: Union[list, None] = None
     emailAddresses: Union[list, None] = None
@@ -184,7 +191,7 @@ class sshCertificateRequest(BaseModel):
     publicKey: bytes
     type: str
     keyID: str
-    principals: List[str]
+    principals: list[str]
 
 
 class x5CCertificate(BaseModel):
@@ -228,7 +235,7 @@ class sshCert(BaseModel):
     alg: str
     type: sshCertType
     key_id: str
-    principals: List[str] = []
+    principals: list[str] = []
     not_after: int
     not_before: int
     revoked_at: Union[int, None] = None
@@ -289,6 +296,14 @@ async def update_metrics():
             ssh_cert_revoked_at.labels(**labels).set(cert.revoked_at)
 
         ssh_cert_status.labels(**labels).set(cert.status.value)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error: {exc.errors()}")
+    return JSONResponse(
+        {"errors": exc.errors()}, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
 
 
 @app.get("/x509/certs", tags=["x509"], summary="Get a list of x509 certificates")
@@ -412,17 +427,17 @@ async def webhook_validate(
 
     try:
         signing_secret = base64.b64decode(webhook_config.secret)
-    except ValueError:
+    except ValueError as e:
         logger.error("Misconfigured webhook secret")
-        raise HTTPException(status_code=500)
+        raise HTTPException(status_code=500) from e
 
     try:
         sig = bytes.fromhex(x_smallstep_signature)
-    except ValueError:
+    except ValueError as e:
         logger.error("Invalid X-Smallstep-Signature header")
         raise HTTPException(
             status_code=400, detail="Invalid X-Smallstep-Signature header"
-        )
+        ) from e
 
     body = await request.body()
 

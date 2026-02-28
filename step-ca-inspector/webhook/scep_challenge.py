@@ -1,12 +1,12 @@
-from fastapi import HTTPException
-from fnmatch import fnmatch
-from config import VaultAuthMethod
-import hvac
 import logging
+from fnmatch import fnmatch
+
+import hvac
 
 # FIXME: Move webhookResponse elsewhere
 import main
-
+from config import VaultAuthMethod
+from fastapi import HTTPException
 
 logger = logging.getLogger()
 
@@ -26,7 +26,7 @@ class hashicorp_vault:
                 )
             except hvac.exceptions.VaultError as e:
                 logger.error(f"HashiCorp Vault error: {e}")
-                raise HTTPException(status_code=500)
+                raise HTTPException(status_code=500) from e
 
         if not self.client.is_authenticated():
             logger.error("HashiCorp Vault client is not authenticated")

@@ -1,11 +1,12 @@
-import asn1
 import binascii
-import dateutil
 import json
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+
+import asn1
+import dateutil
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
 
 
 class list:
@@ -158,7 +159,7 @@ class cert:
                 san["type"] = "RegisteredID"
             elif isinstance(san_value, x509.general_name.OtherName):
                 if san_value.type_id == x509.oid.OtherNameFormOID.PERMANENT_IDENTIFIER:
-                    san["type"] = f"Other (Permanent Identifier)"
+                    san["type"] = "Other (Permanent Identifier)"
                     decoder = asn1.Decoder()
                     decoder.start(san_value.value)
                     _, permanent_identifier = decoder.read()
@@ -169,7 +170,7 @@ class cert:
             else:
                 continue
 
-            if not "value" in san:
+            if "value" not in san:
                 san["value"] = san_value.value
             sans.append(san)
 
