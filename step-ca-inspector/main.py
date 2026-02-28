@@ -10,7 +10,9 @@ from typing import Union
 import asgi_correlation_id
 import mariadb
 from config import Settings, WebhookSettings
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from fastapi_utils.tasks import repeat_every
 from models import ssh_cert, x509_cert
 from prometheus_client import Gauge, make_asgi_app
@@ -290,6 +292,14 @@ async def update_metrics():
             ssh_cert_revoked_at.labels(**labels).set(cert.revoked_at)
 
         ssh_cert_status.labels(**labels).set(cert.status.value)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error: {exc.errors()}")
+    return JSONResponse(
+        {"errors": exc.errors()}, status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
+    )
 
 
 @app.get("/x509/certs", tags=["x509"], summary="Get a list of x509 certificates")
