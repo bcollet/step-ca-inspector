@@ -443,8 +443,6 @@ def webhook_scepchallenge(
     webhook_config: dict = Depends(webhook_validate),
 ) -> webhookResponse:
 
-    response = webhookResponse
-
     logger.info("Received SCEP challenge webhook request")
 
     if not hasattr(scep_challenge, webhook_config.plugin.name):
@@ -523,7 +521,7 @@ async def webhook_ssh_x5c(
     tags=["webhooks"],
     summary="Valiate and enrich an ACME X509 certificate request",
 )
-async def webhook_oidc(
+async def webhook_acme(
     req: webhookx509AcmeCertificateRequest,
     webhook_config: WebhookSettings = Depends(webhook_validate),
 ) -> webhookResponse:
