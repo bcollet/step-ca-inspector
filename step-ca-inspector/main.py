@@ -30,7 +30,11 @@ def configure_logging():
     )
 
 
-app = FastAPI(title="step-ca Inspector API", on_startup=[configure_logging])
+app = FastAPI(
+    title="step-ca Inspector API",
+    on_startup=[configure_logging],
+    strict_content_type=False,
+)
 app.add_middleware(asgi_correlation_id.CorrelationIdMiddleware)
 
 logger = logging.getLogger()
