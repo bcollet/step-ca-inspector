@@ -1,15 +1,17 @@
-import asn1
 import base64
 import logging
+from datetime import datetime, timezone
+
+import asn1
 import hvac
-from cryptography import x509
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-from config import VaultAuthMethod
 
 # FIXME: Move webhookResponse elsewhere
 import main
-from datetime import datetime, timezone
+from config import VaultAuthMethod
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+from fastapi import HTTPException
 from packaging.version import Version
 
 PIN_POLICY = {"01": "never", "02": "once", "03": "always"}
@@ -105,7 +107,8 @@ class yubikey_embedded_attestation:
         for ext in attestation_cert.extensions:
             if ext.oid.dotted_string == "1.3.6.1.4.1.41482.3.3":
                 # Decode Firmware Version
-                firmware_version = "%d.%d.%d" % tuple(ext.value.value[:3])
+                firmware = ext.value.value[:3]
+                firmware_version = f"{firmware[0]}.{firmware[1]}.{firmware[2]}"
             elif ext.oid.dotted_string == "1.3.6.1.4.1.41482.3.7":
                 # Decode Serial Number
                 decoder = asn1.Decoder()
@@ -180,8 +183,8 @@ class acme_da_static:
         logger.debug("Validating with acme_da_static plugin")
 
         response = main.webhookResponse(allow=False)
-        pub_key = req.x509CertificateRequest.publicKey
-        extensions = req.x509CertificateRequest.extensions
+        _pub_key = req.x509CertificateRequest.publicKey
+        _extensions = req.x509CertificateRequest.extensions
 
         if req.attestationData is None:
             logger.error("No attestation data present")
@@ -231,7 +234,7 @@ class acme_da_hashicorp_vault:
                 )
             except hvac.exceptions.VaultError as e:
                 logger.error(f"HashiCorp Vault error: {e}")
-                raise HTTPException(status_code=500)
+                raise HTTPException(status_code=500) from e
 
         if not self.client.is_authenticated():
             logger.error("HashiCorp Vault client is not authenticated")
@@ -241,8 +244,8 @@ class acme_da_hashicorp_vault:
         logger.debug("Validating with acme_ca_hashicorp_vault plugin")
 
         response = main.webhookResponse(allow=False)
-        pub_key = req.x509CertificateRequest.publicKey
-        extensions = req.x509CertificateRequest.extensions
+        _pub_key = req.x509CertificateRequest.publicKey
+        _extensions = req.x509CertificateRequest.extensions
 
         if req.attestationData is None:
             logger.error("No attestation data present")
