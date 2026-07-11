@@ -8,18 +8,6 @@ data by connecting directly to step-ca's database.
 Currently only MariaDB/MySQL is supported, however adding support for
 PostgreSQL should be easy.
 
-Additionally it can serve as a
-[webhook](https://smallstep.com/docs/step-ca/webhooks/) endpoint for
-certificate validation. Currently the following validation plugins are available:
-- `yubikey_embedded_attestation`: validate a Yubikey attestation
-  cross-signature (as added to the certificate signing request by
-  `yubico-piv-tool --attestation`) and check it against configured pin and
-  touch policies.
-- `scep_static`: validate a SCEP challenge and certificate signing request data
-  against a static configuration.
-- `hashicorp_vault`: validate a SCEP challenge and certificate signing request
-  data against data present in a Hashicorp Vault instance.
-
 A CLI client is also available
 [here](https://git.alt.tf/bcollet/step-ca-inspector-client/).
 

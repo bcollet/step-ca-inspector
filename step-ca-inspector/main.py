@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 from enum import Enum
-from typing import Union
 
 import asgi_correlation_id
 import mariadb
@@ -141,7 +140,7 @@ class x509Cert(BaseModel):
     provisioner: provisioner
     not_after: int
     not_before: int
-    revoked_at: Union[int, None] = None
+    revoked_at: int | None = None
     status: certStatus
     sha256: str
     sha1: str
@@ -166,7 +165,7 @@ class sshCert(BaseModel):
     principals: list[str] = []
     not_after: int
     not_before: int
-    revoked_at: Union[int, None] = None
+    revoked_at: int | None = None
     status: certStatus
     signing_key: str
     signing_key_type: str
@@ -272,7 +271,7 @@ def list_x509_certs(
 @app.get(
     "/x509/certs/{serial}", tags=["x509"], summary="Get details on an x509 certificate"
 )
-def get_x509_cert(serial: str) -> Union[x509Cert, None]:
+def get_x509_cert(serial: str) -> x509Cert | None:
     cert = x509_cert.cert.from_serial(db_pool=db_pool, serial=serial)
     if cert is None:
         return None
@@ -318,7 +317,7 @@ def list_ssh_certs(
 @app.get(
     "/ssh/certs/{serial}", tags=["ssh"], summary="Get details on an SSH certificate"
 )
-def get_ssh_cert(serial: str) -> Union[sshCert, None]:
+def get_ssh_cert(serial: str) -> sshCert | None:
     cert = ssh_cert.cert.from_serial(db_pool=db_pool, serial=serial)
     if cert is None:
         return None

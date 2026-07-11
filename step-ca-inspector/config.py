@@ -1,5 +1,4 @@
 import os
-from typing import Optional
 
 from pydantic_settings import (
     BaseSettings,
@@ -16,14 +15,14 @@ class DatabaseSettings(BaseSettings):
     database: str
     ssl: bool = False
     ssl_verify_cert: bool = True
-    ssl_ca: Optional[str] = None
+    ssl_ca: str | None = None
     reconnect: bool = True
     pool_size: int = 5
 
 
 class Settings(BaseSettings):
     database: DatabaseSettings
-    metrics_cert_expired_max_days: Optional[int] = 30
+    metrics_cert_expired_max_days: int | None = 30
 
     @classmethod
     def settings_customise_sources(
