@@ -230,7 +230,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.get("/x509/certs", tags=["x509"], summary="Get a list of x509 certificates")
 def list_x509_certs(
-    sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
+    sort_key: str = Query(
+        json_schema_extra={"enum": ["not_after", "not_before"]}, default="not_after"
+    ),
     cert_status: list[certStatus] = Query(["Valid"]),
     cert_expired_max_days: int = 30,
     subject: str = None,
@@ -281,7 +283,9 @@ def get_x509_cert(serial: str) -> x509Cert | None:
 
 @app.get("/ssh/certs", tags=["ssh"], summary="Get a list of SSH certificates")
 def list_ssh_certs(
-    sort_key: str = Query(enum=["not_after", "not_before"], default="not_after"),
+    sort_key: str = Query(
+        json_schema_extra={"enum": ["not_after", "not_before"]}, default="not_after"
+    ),
     cert_type: list[sshCertType] = Query(["Host", "User"]),
     cert_status: list[certStatus] = Query(["Valid"]),
     cert_expired_max_days: int = 30,
