@@ -2,17 +2,32 @@ import logging
 import os
 import sys
 from enum import Enum
+from contextlib import asynccontextmanager
 
 import asgi_correlation_id
 import mariadb
+import uvicorn
 from config import Settings
 from fastapi import FastAPI, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi_utils.tasks import repeat_every
 from models import ssh_cert, x509_cert
-from prometheus_client import Gauge, make_asgi_app
+from prometheus_client import CollectorRegistry, Gauge, make_asgi_app, multiprocess
 from pydantic import BaseModel, ValidationError
+
+db_pool = None
+metrics = None
+
+logger = logging.getLogger()
+try:
+    config = Settings()
+except ValidationError as e:
+    for error in e.errors():
+        logger.error(
+            f"Configuration error: {error['msg']}: {'.'.join(str(node) for node in error['loc'])}"
+        )
+    sys.exit(1)
 
 
 def configure_logging():
@@ -25,80 +40,105 @@ def configure_logging():
     )
 
 
+class Metrics:
+    def __init__(self):
+        x509_label_names = [
+            "subject",
+            "san",
+            "serial",
+            "provisioner",
+            "provisioner_type",
+        ]
+        self.x509_cert_not_before = Gauge(
+            "step_ca_x509_certificate_not_before_timestamp_seconds",
+            "Certificate not valid before timestamp",
+            x509_label_names,
+            multiprocess_mode="mostrecent",
+        )
+        self.x509_cert_not_after = Gauge(
+            "step_ca_x509_certificate_not_after_timestamp_seconds",
+            "Certificate not valid after timestamp",
+            x509_label_names,
+            multiprocess_mode="mostrecent",
+        )
+        self.x509_cert_revoked_at = Gauge(
+            "step_ca_x509_certificate_revoked_at_timestamp_seconds",
+            "Certificate not valid after timestamp",
+            x509_label_names,
+            multiprocess_mode="mostrecent",
+        )
+        self.x509_cert_status = Gauge(
+            "step_ca_x509_certificate_status",
+            "Certificate status",
+            x509_label_names,
+            multiprocess_mode="mostrecent",
+        )
+
+        ssh_label_names = ["key_id", "principals", "serial", "certificate_type"]
+        self.ssh_cert_not_before = Gauge(
+            "step_ca_ssh_certificate_not_before_timestamp_seconds",
+            "Certificate not valid before timestamp",
+            ssh_label_names,
+            multiprocess_mode="mostrecent",
+        )
+        self.ssh_cert_not_after = Gauge(
+            "step_ca_ssh_certificate_not_after_timestamp_seconds",
+            "Certificate not valid after timestamp",
+            ssh_label_names,
+            multiprocess_mode="mostrecent",
+        )
+        self.ssh_cert_revoked_at = Gauge(
+            "step_ca_ssh_certificate_revoked_at_timestamp_seconds",
+            "Certificate not valid after timestamp",
+            ssh_label_names,
+            multiprocess_mode="mostrecent",
+        )
+        self.ssh_cert_status = Gauge(
+            "step_ca_ssh_certificate_status",
+            "Certificate status",
+            ssh_label_names,
+            multiprocess_mode="mostrecent",
+        )
+
+
+def make_metrics_app():
+    registry = CollectorRegistry()
+    multiprocess.MultiProcessCollector(registry)
+    return make_asgi_app(registry=registry)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global db_pool
+    # Startup: Create pool
+    try:
+        db_pool = mariadb.ConnectionPool(
+            pool_name="step_pool",
+            pool_reset_connection=True,
+            **dict(config.database),
+        )
+    except Exception as e:
+        print(f"Could not connect to database: {e}")
+        sys.exit(1)
+
+    global metrics
+    metrics = Metrics()
+    await update_metrics()
+
+    yield
+    # Shutdown: Close pool
+    db_pool.close()
+
+
 app = FastAPI(
     title="step-ca Inspector API",
     on_startup=[configure_logging],
     strict_content_type=False,
+    lifespan=lifespan,
 )
 app.add_middleware(asgi_correlation_id.CorrelationIdMiddleware)
 
-logger = logging.getLogger()
-
-try:
-    config = Settings()
-except ValidationError as e:
-    for error in e.errors():
-        logger.error(
-            f"Configuration error: {error['msg']}: {'.'.join(str(node) for node in error['loc'])}"
-        )
-    sys.exit(1)
-
-try:
-    db_pool = mariadb.ConnectionPool(
-        pool_name="step_pool",
-        pool_reset_connection=True,
-        **dict(config.database),
-    )
-except Exception as e:
-    print(f"Could not connect to database: {e}")
-    sys.exit(1)
-
-
-x509_label_names = ["subject", "san", "serial", "provisioner", "provisioner_type"]
-x509_cert_not_before = Gauge(
-    "step_ca_x509_certificate_not_before_timestamp_seconds",
-    "Certificate not valid before timestamp",
-    x509_label_names,
-)
-x509_cert_not_after = Gauge(
-    "step_ca_x509_certificate_not_after_timestamp_seconds",
-    "Certificate not valid after timestamp",
-    x509_label_names,
-)
-x509_cert_revoked_at = Gauge(
-    "step_ca_x509_certificate_revoked_at_timestamp_seconds",
-    "Certificate not valid after timestamp",
-    x509_label_names,
-)
-x509_cert_status = Gauge(
-    "step_ca_x509_certificate_status",
-    "Certificate status",
-    x509_label_names,
-)
-
-ssh_label_names = ["key_id", "principals", "serial", "certificate_type"]
-ssh_cert_not_before = Gauge(
-    "step_ca_ssh_certificate_not_before_timestamp_seconds",
-    "Certificate not valid before timestamp",
-    ssh_label_names,
-)
-ssh_cert_not_after = Gauge(
-    "step_ca_ssh_certificate_not_after_timestamp_seconds",
-    "Certificate not valid after timestamp",
-    ssh_label_names,
-)
-ssh_cert_revoked_at = Gauge(
-    "step_ca_ssh_certificate_revoked_at_timestamp_seconds",
-    "Certificate not valid after timestamp",
-    ssh_label_names,
-)
-ssh_cert_status = Gauge(
-    "step_ca_ssh_certificate_status",
-    "Certificate status",
-    ssh_label_names,
-)
-
-metrics_app = make_asgi_app()
+metrics_app = make_metrics_app()
 app.mount("/metrics", metrics_app)
 
 
@@ -177,7 +217,6 @@ class sshCert(BaseModel):
     extensions: dict = {}
 
 
-@app.on_event("startup")
 @repeat_every(seconds=15, raise_exceptions=False, logger=logger)
 async def update_metrics():
     x509_certs = x509_cert.list(
@@ -192,13 +231,13 @@ async def update_metrics():
             "provisioner_type": cert.provisioner["type"],
         }
 
-        x509_cert_not_after.labels(**labels).set(cert.not_after)
-        x509_cert_not_before.labels(**labels).set(cert.not_before)
+        metrics.x509_cert_not_after.labels(**labels).set(cert.not_after)
+        metrics.x509_cert_not_before.labels(**labels).set(cert.not_before)
 
         if cert.revoked_at is not None:
-            x509_cert_revoked_at.labels(**labels).set(cert.revoked_at)
+            metrics.x509_cert_revoked_at.labels(**labels).set(cert.revoked_at)
 
-        x509_cert_status.labels(**labels).set(cert.status.value)
+        metrics.x509_cert_status.labels(**labels).set(cert.status.value)
 
     ssh_certs = ssh_cert.list(
         db_pool=db_pool, expired_max_days=config.metrics_cert_expired_max_days
@@ -211,13 +250,13 @@ async def update_metrics():
             "certificate_type": getattr(sshCertType, cert.type.name).value,
         }
 
-        ssh_cert_not_after.labels(**labels).set(cert.not_after)
-        ssh_cert_not_before.labels(**labels).set(cert.not_before)
+        metrics.ssh_cert_not_after.labels(**labels).set(cert.not_after)
+        metrics.ssh_cert_not_before.labels(**labels).set(cert.not_before)
 
         if cert.revoked_at is not None:
-            ssh_cert_revoked_at.labels(**labels).set(cert.revoked_at)
+            metrics.ssh_cert_revoked_at.labels(**labels).set(cert.revoked_at)
 
-        ssh_cert_status.labels(**labels).set(cert.status.value)
+        metrics.ssh_cert_status.labels(**labels).set(cert.status.value)
 
 
 @app.exception_handler(RequestValidationError)
@@ -328,3 +367,7 @@ def get_ssh_cert(serial: str) -> sshCert | None:
     cert.type = getattr(sshCertType, cert.type.name)
     cert.status = getattr(certStatus, cert.status.name)
     return cert
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", workers=4, host="0.0.0.0", port=8080, proxy_headers=True)
