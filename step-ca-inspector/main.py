@@ -1,8 +1,8 @@
 import logging
 import os
 import sys
-from enum import Enum
 from contextlib import asynccontextmanager
+from enum import StrEnum
 
 import asgi_correlation_id
 import mariadb
@@ -142,13 +142,13 @@ metrics_app = make_metrics_app()
 app.mount("/metrics", metrics_app)
 
 
-class certStatus(str, Enum):
+class certStatus(StrEnum):
     REVOKED = "Revoked"
     EXPIRED = "Expired"
     VALID = "Valid"
 
 
-class provisionerType(str, Enum):
+class provisionerType(StrEnum):
     # https://github.com/smallstep/certificates/blob/938a4da5adf2d32f36ffd06922e5c66956dfff41/authority/provisioner/provisioner.go#L200-L223
     ACME = "ACME"
     AWS = "AWS"
@@ -192,7 +192,7 @@ class x509Cert(BaseModel):
     pem: str
 
 
-class sshCertType(str, Enum):
+class sshCertType(StrEnum):
     HOST = "Host"
     USER = "User"
 
