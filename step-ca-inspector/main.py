@@ -1,5 +1,6 @@
 import logging
 import os
+import signal
 import sys
 from contextlib import asynccontextmanager
 from enum import StrEnum
@@ -19,7 +20,7 @@ from pydantic import BaseModel, ValidationError
 db_pool = None
 metrics = None
 
-logger = logging.getLogger()
+logger = logging.getLogger("uvicorn.error")
 try:
     config = Settings()
 except ValidationError as e:
@@ -28,16 +29,6 @@ except ValidationError as e:
             f"Configuration error: {error['msg']}: {'.'.join(str(node) for node in error['loc'])}"
         )
     sys.exit(1)
-
-
-def configure_logging():
-    console_handler = logging.StreamHandler()
-    console_handler.addFilter(asgi_correlation_id.CorrelationIdFilter())
-    logging.basicConfig(
-        handlers=[console_handler],
-        level=os.environ.get("STEP_CA_INSPECTOR_LOGLEVEL", logging.INFO),
-        format="%(levelname)s [%(correlation_id)s] %(message)s",
-    )
 
 
 class Metrics:
@@ -117,9 +108,9 @@ async def lifespan(app: FastAPI):
             pool_reset_connection=True,
             **dict(config.database),
         )
-    except Exception as e:
-        print(f"Could not connect to database: {e}")
-        sys.exit(1)
+    except mariadb.OperationalError as e:
+        logger.error(f"Database: {e}")
+        os.kill(os.getpid(), signal.SIGKILL)
 
     global metrics
     metrics = Metrics()
@@ -132,7 +123,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="step-ca Inspector API",
-    on_startup=[configure_logging],
     strict_content_type=False,
     lifespan=lifespan,
 )
