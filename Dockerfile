@@ -10,5 +10,6 @@ RUN apk add --no-cache mariadb-connector-c mariadb-connector-c-dev gcc musl-dev 
     apk del --rdepends --purge musl-dev gcc musl-dev python3-dev mariadb-connector-c-dev
 
 COPY ./step-ca-inspector /app/step-ca-inspector
-
-CMD ["fastapi", "run", "step-ca-inspector/main.py", "--port", "8080", "--proxy-headers"]
+RUN mkdir -p /app/metrics
+ENV PROMETHEUS_MULTIPROC_DIR=/app/metrics
+CMD ["python3", "step-ca-inspector/main.py"]

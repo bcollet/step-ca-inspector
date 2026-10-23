@@ -1,6 +1,6 @@
 import binascii
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 import asn1
@@ -24,8 +24,7 @@ class list:
         )
 
         expired_max_date = datetime.timestamp(
-            datetime.now(timezone.utc).replace(microsecond=0)
-            - timedelta(days=expired_max_days)
+            datetime.now(UTC).replace(microsecond=0) - timedelta(days=expired_max_days)
         )
 
         for result in cur:
@@ -105,9 +104,7 @@ class cert:
         else:
             self.revoked_at = None
 
-        now_with_tz = datetime.timestamp(
-            datetime.now(timezone.utc).replace(microsecond=0)
-        )
+        now_with_tz = datetime.timestamp(datetime.now(UTC).replace(microsecond=0))
 
         if self.revoked_at is not None and self.revoked_at < now_with_tz:
             self.status = status.REVOKED
@@ -130,10 +127,7 @@ class cert:
             (cert_serial,),
         )
 
-        if cur.rowcount > 0:
-            cert = cur.fetchone()
-        else:
-            cert = None
+        cert = cur.fetchone() or None
 
         cur.close()
         db.commit()
