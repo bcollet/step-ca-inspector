@@ -127,10 +127,7 @@ class cert:
             (cert_serial,),
         )
 
-        if cur.rowcount > 0:
-            cert = cur.fetchone()
-        else:
-            cert = None
+        cert = cur.fetchone() or None
 
         cur.close()
         db.commit()

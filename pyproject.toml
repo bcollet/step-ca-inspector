@@ -9,7 +9,8 @@ line-length = 88
 # I: isort (sort imports)
 # B: flake8-bugbear (common bugs)
 # UP: pyupgrade (modernize syntax)
-select = ["E", "F", "I", "B", "UP"]
+# SIM: flake8-simplify
+select = ["E", "F", "I", "B", "UP", "SIM"]
  
 # Ignore specific rules if necessary
 ignore = ["E501"]

@@ -264,9 +264,9 @@ def list_x509_certs(
     ),
     cert_status: list[certStatus] = Query(["Valid"]),
     cert_expired_max_days: int = 30,
-    subject: str = None,
-    san: str = None,
-    provisioner: str = None,
+    subject: str | None = None,
+    san: str | None = None,
+    provisioner: str | None = None,
     provisioner_type: list[provisionerType] = Query(list(provisionerType)),
 ) -> list[x509Cert]:
     certs = x509_cert.list(
@@ -318,8 +318,8 @@ def list_ssh_certs(
     cert_type: list[sshCertType] = Query(["Host", "User"]),
     cert_status: list[certStatus] = Query(["Valid"]),
     cert_expired_max_days: int = 30,
-    key: str = None,
-    principal: str = None,
+    key: str | None = None,
+    principal: str | None = None,
 ) -> list[sshCert]:
     certs = ssh_cert.list(
         db_pool=db_pool, sort_key=sort_key, expired_max_days=cert_expired_max_days
