@@ -18,6 +18,7 @@ class DatabaseSettings(BaseSettings):
     ssl_ca: str | None = None
     reconnect: bool = True
     pool_size: int = 5
+    connect_timeout: int | None = 10
 
 
 class Settings(BaseSettings):
