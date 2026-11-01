@@ -9,7 +9,7 @@ Currently only MariaDB/MySQL is supported, however adding support for
 PostgreSQL should be easy.
 
 A CLI client is also available
-[here](https://git.alt.tf/bcollet/step-ca-inspector-client/).
+[here](https://gitlab.alt.tf/bcollet/step-ca-inspector-client/).
 
 
 ## Quick start
