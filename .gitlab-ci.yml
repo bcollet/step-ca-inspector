@@ -1,0 +1,41 @@
+---
+stages:
+- build
+
+variables:
+  # This variable is shared by both the DinD service and Docker client.
+  # For the service, it will instruct DinD to create `docker.sock` here.
+  # For the client, it tells the Docker client which Docker Unix socket to connect to.
+  DOCKER_HOST: "unix:///runner/services/docker/docker.sock"
+
+default:
+  tags:
+  - build-docker
+  services:
+  - docker:29-dind
+  image: docker:29-cli
+  before_script:
+  - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" "$CI_REGISTRY" --password-stdin
+
+build:
+  stage: build
+  script:
+  - |
+    docker build --pull \
+      -t $CI_REGISTRY_IMAGE:$CI_COMMIT_TAG \
+      -t $CI_REGISTRY_IMAGE:latest \
+      --label "org.opencontainers.image.version=$CI_COMMIT_TAG" \
+      --push .
+  rules:
+  - if: $CI_COMMIT_TAG
+
+build-mr:
+  stage: build
+  script:
+  - |
+    docker build --pull \
+      -t $CI_REGISTRY_IMAGE:mr-$CI_MERGE_REQUEST_IID \
+      --label "org.opencontainers.image.version=mr-$CI_MERGE_REQUEST_IID" \
+      --push .
+  rules:
+  - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
